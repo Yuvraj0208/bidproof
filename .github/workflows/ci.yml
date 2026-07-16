@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: bidproof_owner
+          POSTGRES_PASSWORD: bidproof_dev
+          POSTGRES_DB: bidproof
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bidproof_owner -d bidproof"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://bidproof_app:bidproof_app_dev@localhost:5432/bidproof
+      DATABASE_URL_OWNER: postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5432/bidproof
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --project apps/api
+      - name: Run tests (unit + integration)
+        run: uv run --project apps/api pytest -q
+
+  licence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install runtime dependencies only
+        run: uv sync --project apps/api --no-dev
+      # Permissive licences only in core (SPEC §11.4, §20). Copyleft
+      # (GPL/LGPL/AGPL/SSPL/MPL) and unknown licences fail the build.
+      # Reviewed exceptions:
+      #   certifi — MPL-2.0, CA certificate bundle only (approved 2026-07-16)
+      #   bidproof-api — this repo's own package
+      - name: Licence gate
+        run: >-
+          uvx pip-licenses
+          --python "$(pwd)/apps/api/.venv/bin/python"
+          --allow-only "MIT;MIT License;BSD License;BSD-2-Clause;BSD-3-Clause;Apache-2.0;Apache Software License;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
+          --ignore-packages certifi bidproof-api

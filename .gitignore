@@ -11,6 +11,7 @@ parking-lot.md        # remove this line if you're happy to show it
 # --- secrets & environment ---
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 infra/litellm/*.local.yaml

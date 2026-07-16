@@ -1,0 +1,10 @@
+# Enable once per clone:  python -m uv run --project apps/api pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: unit tests (integration tests run in CI)
+        entry: python -m uv run --project apps/api pytest -m "not integration" -q
+        language: system
+        pass_filenames: false
+        always_run: true
