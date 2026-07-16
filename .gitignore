@@ -1,0 +1,40 @@
+# =========================================================
+#  Local working files — NEVER published to GitHub.
+#  These stay on your machine; Claude Code still reads them.
+# =========================================================
+CLAUDE.md
+docs/BUILD_PLAYBOOK.md
+docs/SPEC.md          # remove this line if you want to publish a cleaned spec
+parking-lot.md        # remove this line if you're happy to show it
+.claude/              # local tool settings/cache
+
+# --- secrets & environment ---
+.env
+.env.*
+*.key
+*.pem
+infra/litellm/*.local.yaml
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- node / web ---
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+npm-debug.log*
+
+# --- data, stores, artifacts ---
+*.log
+uploads/
+minio-data/
+postgres-data/
+pgdata/
+.DS_Store
+Thumbs.db
