@@ -1,0 +1,35 @@
+# The LiteLLM gateway: exactly three model roles — small / mid / strong.
+# Every value is an env reference; no vendor, model, or URL literal lives
+# here (repo golden rule 7). Swap a model by editing .env and
+# restarting this container. The Model Lab (US-14) records the evidence
+# behind each role's assignment.
+
+model_list:
+  - model_name: small
+    litellm_params:
+      model: os.environ/LLM_SMALL_MODEL
+      api_base: os.environ/LLM_SMALL_API_BASE
+      api_key: os.environ/LLM_SMALL_API_KEY
+
+  - model_name: mid
+    litellm_params:
+      model: os.environ/LLM_MID_MODEL
+      api_base: os.environ/LLM_MID_API_BASE
+      api_key: os.environ/LLM_MID_API_KEY
+
+  - model_name: strong
+    litellm_params:
+      model: os.environ/LLM_STRONG_MODEL
+      api_base: os.environ/LLM_STRONG_API_BASE
+      api_key: os.environ/LLM_STRONG_API_KEY
+
+litellm_settings:
+  # Bounded budgets per SPEC §10 — a runaway call stops itself.
+  request_timeout: 120
+  num_retries: 2
+  # Every gateway call is traced (SPEC §13). Keys come from the Langfuse UI
+  # on first login and live in .env.
+  success_callback: ["langfuse"]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
