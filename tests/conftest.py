@@ -16,11 +16,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 OWNER_URL = os.environ.get(
     "DATABASE_URL_OWNER",
-    "postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5432/bidproof",
+    "postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5433/bidproof",
 )
 APP_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql+asyncpg://bidproof_app:bidproof_app_dev@localhost:5432/bidproof",
+    "postgresql+asyncpg://bidproof_app:bidproof_app_dev@localhost:5433/bidproof",
 )
 
 # The app role's dev password. Local/CI only — real deployments set their own.

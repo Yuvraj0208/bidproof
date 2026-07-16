@@ -11,7 +11,19 @@ dependencies = [
     "alembic>=1.14",
     "pydantic-settings>=2.7",
     "httpx>=0.28",
+    "bidproof-parser",
+    "minio>=7.2",
+    "langfuse>=2.50",
+    "python-multipart>=0.0.9",
 ]
+
+[project.optional-dependencies]
+# Heavy ML parsing engines (Docling; PaddleOCR-VL documented in the parser
+# manifest). The licence gate in CI scans these too.
+ml = ["bidproof-parser[ml]"]
+
+[tool.uv.sources]
+bidproof-parser = { path = "../../agents/parser", editable = true }
 
 [dependency-groups]
 dev = [

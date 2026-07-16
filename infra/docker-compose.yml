@@ -17,7 +17,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bidproof_dev}
       POSTGRES_DB: ${POSTGRES_DB:-bidproof}
     ports:
-      - "5432:5432"
+      # 5433 on the host: dev machines often run a native Postgres on 5432.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro

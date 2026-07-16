@@ -15,7 +15,7 @@ if config.config_file_name is not None:
 
 # Migrations run as the table OWNER, never as the RLS-constrained app role.
 DEFAULT_OWNER_URL = (
-    "postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5432/bidproof"
+    "postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5433/bidproof"
 )
 config.set_main_option(
     "sqlalchemy.url", os.environ.get("DATABASE_URL_OWNER", DEFAULT_OWNER_URL)

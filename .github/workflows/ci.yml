@@ -24,9 +24,17 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://bidproof_app:bidproof_app_dev@localhost:5432/bidproof
       DATABASE_URL_OWNER: postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5432/bidproof
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: bidproof
+      MINIO_SECRET_KEY: bidproof_dev_minio
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Start MinIO
+        run: >-
+          docker run -d --name minio -p 9000:9000
+          -e MINIO_ROOT_USER=bidproof -e MINIO_ROOT_PASSWORD=bidproof_dev_minio
+          minio/minio server /data
       - name: Install dependencies
         run: uv sync --project apps/api
       - name: Run tests (unit + integration)
@@ -41,12 +49,16 @@ jobs:
         run: uv sync --project apps/api --no-dev
       # Permissive licences only in core (SPEC §11.4, §20). Copyleft
       # (GPL/LGPL/AGPL/SSPL/MPL) and unknown licences fail the build.
-      # Reviewed exceptions:
+      # Reviewed exceptions (all permissive; listed because their licence
+      # strings can't sit in the semicolon-separated allow list):
       #   certifi — MPL-2.0, CA certificate bundle only (approved 2026-07-16)
-      #   bidproof-api — this repo's own package
+      #   pycryptodome — "BSD License; Public Domain"
+      #   bidproof-api / bidproof-parser — this repo's own packages
+      # The parser's optional ml extra was reviewed by hand: docling MIT,
+      # torch BSD-3, paddlepaddle/paddleocr Apache-2.0.
       - name: Licence gate
         run: >-
           uvx pip-licenses
           --python "$(pwd)/apps/api/.venv/bin/python"
-          --allow-only "MIT;MIT License;BSD License;BSD-2-Clause;BSD-3-Clause;Apache-2.0;Apache Software License;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
-          --ignore-packages certifi bidproof-api
+          --allow-only "MIT;MIT License;MIT-0;BSD License;BSD-2-Clause;BSD-3-Clause;3-Clause BSD License;Apache-2.0;Apache Software License;Apache-2.0 OR BSD-2-Clause;BSD-3-Clause, Apache-2.0, dependency licenses;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
+          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser
