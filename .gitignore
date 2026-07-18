@@ -1,15 +1,5 @@
-# =========================================================
-#  Local working files — NEVER published to GitHub.
-#  These stay on your machine; Claude Code still reads them.
-# =========================================================
-CLAUDE.md
-docs/BUILD_PLAYBOOK.md
-# local tool settings/cache
-.claude/
-# NOTE: gitignore has no inline comments — the old "pattern  # comment" lines
-# never matched, so docs/SPEC.md and parking-lot.md are ALREADY TRACKED.
-# To make either local-only again: git rm --cached <file>, then re-add its
-# pattern here on a line of its own.
+# Local-only working files are ignored via .git/info/exclude on the
+# maintainer's machine, not here.
 
 # --- secrets & environment ---
 .env
