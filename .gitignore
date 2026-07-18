@@ -4,9 +4,12 @@
 # =========================================================
 CLAUDE.md
 docs/BUILD_PLAYBOOK.md
-docs/SPEC.md          # remove this line if you want to publish a cleaned spec
-parking-lot.md        # remove this line if you're happy to show it
-.claude/              # local tool settings/cache
+# local tool settings/cache
+.claude/
+# NOTE: gitignore has no inline comments — the old "pattern  # comment" lines
+# never matched, so docs/SPEC.md and parking-lot.md are ALREADY TRACKED.
+# To make either local-only again: git rm --cached <file>, then re-add its
+# pattern here on a line of its own.
 
 # --- secrets & environment ---
 .env
