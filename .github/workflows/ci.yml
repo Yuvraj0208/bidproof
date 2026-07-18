@@ -53,12 +53,12 @@ jobs:
       # strings can't sit in the semicolon-separated allow list):
       #   certifi — MPL-2.0, CA certificate bundle only (approved 2026-07-16)
       #   pycryptodome — "BSD License; Public Domain"
-      #   bidproof-api / bidproof-parser — this repo's own packages
-      # The parser's optional ml extra was reviewed by hand: docling MIT,
-      # torch BSD-3, paddlepaddle/paddleocr Apache-2.0.
+      #   bidproof-* — this repo's own packages
+      # Optional extras reviewed by hand: docling MIT, torch BSD-3,
+      # paddlepaddle/paddleocr Apache-2.0, playwright Apache-2.0.
       - name: Licence gate
         run: >-
           uvx pip-licenses
           --python "$(pwd)/apps/api/.venv/bin/python"
           --allow-only "MIT;MIT License;MIT-0;BSD License;BSD-2-Clause;BSD-3-Clause;3-Clause BSD License;Apache-2.0;Apache Software License;Apache-2.0 OR BSD-2-Clause;BSD-3-Clause, Apache-2.0, dependency licenses;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
-          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser
+          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser bidproof-adapters bidproof-scout

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Latest Active Tenders</title>
+    <item>
+      <title>Supply and Installation of Modular Office Furniture</title>
+      <link>https://eprocure.gov.in/epublish/app?page=FrontEndTenderDetails&amp;service=page&amp;id=2026_DOS_112233_1</link>
+      <guid>2026_DOS_112233_1</guid>
+      <description>Tender Value: Rs 1,20,00,000 | e-Published Date: 15-07-2026 10:00 | Closing Date: 05-08-2026 15:00</description>
+      <author>Department of Space</author>
+    </item>
+    <item>
+      <title>Procurement of Industrial Storage Racks for Central Warehouse</title>
+      <link>https://eprocure.gov.in/epublish/app?page=FrontEndTenderDetails&amp;service=page&amp;id=2026_CWC_445566_1</link>
+      <guid>2026_CWC_445566_1</guid>
+      <description>Tender Value: Rs 2,40,00,000 | Closing Date: 12-08-2026 11:30</description>
+      <author>Central Warehousing Corporation</author>
+    </item>
+    <item>
+      <title></title>
+      <link></link>
+      <description>malformed item that must be skipped, never guessed at</description>
+    </item>
+  </channel>
+</rss>

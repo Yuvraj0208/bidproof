@@ -12,6 +12,8 @@ dependencies = [
     "pydantic-settings>=2.7",
     "httpx>=0.28",
     "bidproof-parser",
+    "bidproof-adapters",
+    "bidproof-scout",
     "minio>=7.2",
     "langfuse>=2.50",
     "python-multipart>=0.0.9",
@@ -21,9 +23,13 @@ dependencies = [
 # Heavy ML parsing engines (Docling; PaddleOCR-VL documented in the parser
 # manifest). The licence gate in CI scans these too.
 ml = ["bidproof-parser[ml]"]
+# Browser-driven scraping (GeM). After install: playwright install chromium
+scrapers = ["bidproof-adapters[gem]"]
 
 [tool.uv.sources]
 bidproof-parser = { path = "../../agents/parser", editable = true }
+bidproof-adapters = { path = "../../adapters", editable = true }
+bidproof-scout = { path = "../../agents/scout", editable = true }
 
 [dependency-groups]
 dev = [

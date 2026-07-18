@@ -46,14 +46,20 @@ def validate_pdf_upload(data: bytes, max_bytes: int) -> None:
         )
 
 
-async def create_upload_records(
+async def create_tender_with_document(
     org_id: uuid.UUID,
+    *,
     filename: str,
-    title: str | None,
+    title: str,
     data: bytes,
     storage: ObjectStorage,
+    source: str = "manual",
+    external_id: str | None = None,
+    portal_url: str | None = None,
+    closing_at=None,
 ) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, str]:
     """Store the raw file and create tender + document + pending parse run.
+    Shared by manual upload and the Scout — every input path funnels here.
     Returns (tender_id, document_id, parse_run_id, object_key)."""
     sha = hashlib.sha256(data).hexdigest()
 
@@ -68,7 +74,14 @@ async def create_upload_records(
         object_key = f"{org_id}/{sha}.pdf"
         await asyncio.to_thread(storage.put_pdf, object_key, data)
 
-        tender = Tender(org_id=org_id, title=title or filename, source="manual")
+        tender = Tender(
+            org_id=org_id,
+            title=title,
+            source=source,
+            external_id=external_id,
+            portal_url=portal_url,
+            closing_at=closing_at,
+        )
         session.add(tender)
         await session.flush()
 
@@ -94,6 +107,23 @@ async def create_upload_records(
         await session.flush()
 
         return tender.id, document.id, run.id, object_key
+
+
+async def create_upload_records(
+    org_id: uuid.UUID,
+    filename: str,
+    title: str | None,
+    data: bytes,
+    storage: ObjectStorage,
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, str]:
+    return await create_tender_with_document(
+        org_id,
+        filename=filename,
+        title=title or filename,
+        data=data,
+        storage=storage,
+        source="manual",
+    )
 
 
 async def execute_parse_run(

@@ -9,7 +9,7 @@ promoted into `docs/SPEC.md` §3.2 as a real user story with acceptance criteria
 | Date | Idea | Why it's parked (not in scope / not in SPEC) | Relates to | Decision |
 |------|------|----------------------------------------------|------------|----------|
 | _e.g. 2026-07-20_ | _Auto-email pre-bid letters to the buyer_ | _Violates least-privilege: no agent may send email or submit (SPEC §10)_ | _US-08_ | _Parked — human sends_ |
-| 2026-07-17 | Move parse execution from in-process background task to a Celery worker (stack already has Redis+Celery) | US-03 only needs the pipeline to run; queueing matters when the scheduler + scrapers arrive | US-01 | Parked — revisit at US-01 |
+| 2026-07-17 | Move parse execution from in-process background task to a Celery worker (stack already has Redis+Celery) | Revisited at US-01: kept an in-process interval scheduler (meets the 4-hour AC); Celery pays off when parse workload must leave the API process | US-01 | Parked — revisit when parse load demands workers |
 | 2026-07-17 | Decide PyMuPDF permanently: pypdfium2 stays, or buy a PyMuPDF commercial licence | SPEC §5.2 names PyMuPDF but it is AGPL — excluded by SPEC §11.4/§20 licence rule; pypdfium2 (Apache) used behind an interface | Parser | Parked — pypdfium2 until sponsor decides |
 |      |      |                                              |            |          |
 

@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3000"
 
+    # Scout (US-01). The allow-list is the ONLY set of hosts the Scout can
+    # reach — SSRF guard (SPEC §10, §11.4). Comma-separated domains.
+    scout_allowed_domains: str = "gem.gov.in,eprocure.gov.in"
+    scout_enabled: bool = False
+    scout_interval_minutes: int = 60  # AC: new tenders within 4 hours
+    gem_bids_url: str = "https://bidplus.gem.gov.in/all-bids"
+    cppp_feed_url: str = "https://eprocure.gov.in/cppp/latestactivetendersnew"
+
 
 @lru_cache
 def get_settings() -> Settings:
