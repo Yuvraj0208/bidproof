@@ -1,4 +1,4 @@
-# BidProof pilot infrastructure (SPEC §15: Docker Compose now, the same
+﻿# BidProof pilot infrastructure (SPEC Â§15: Docker Compose now, the same
 # containers move to a VM or Kubernetes later).
 #
 # From the repo root:
@@ -11,6 +11,7 @@ name: bidproof
 
 services:
   postgres:
+    restart: unless-stopped
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bidproof_owner}
@@ -29,6 +30,7 @@ services:
       retries: 10
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports:
       - "6379:6379"
@@ -39,6 +41,7 @@ services:
       retries: 10
 
   minio:
+    restart: unless-stopped
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
@@ -71,6 +74,7 @@ services:
     restart: "no"
 
   clickhouse:
+    restart: unless-stopped
     image: clickhouse/clickhouse-server:24.8
     environment:
       CLICKHOUSE_DB: default
@@ -89,6 +93,7 @@ services:
       retries: 10
 
   langfuse-web:
+    restart: unless-stopped
     image: langfuse/langfuse:3
     depends_on:
       postgres:
@@ -122,6 +127,7 @@ services:
       REDIS_PORT: "6379"
 
   langfuse-worker:
+    restart: unless-stopped
     image: langfuse/langfuse-worker:3
     depends_on:
       postgres:
@@ -135,6 +141,7 @@ services:
     environment: *langfuse-env
 
   litellm:
+    restart: unless-stopped
     image: ghcr.io/berriai/litellm:main-stable
     command: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
     ports:
