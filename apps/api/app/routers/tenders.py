@@ -14,6 +14,7 @@ from app.core.tenancy import require_org_id
 from app.models import Document, Element, Page, ParseRun, Tender
 from app.observability import get_parse_logger
 from app.parsing import get_ladder
+from app.services import extraction as extraction_service
 from app.services import ingest
 from app.services import triage as triage_service
 from app.storage import ObjectStorage
@@ -136,6 +137,7 @@ async def upload_tender(
         parse_logger=parse_logger,
     )
     background.add_task(triage_service.triage_after_parse, org_id, tender_id)
+    background.add_task(extraction_service.extract_after_parse, org_id, tender_id)
     return UploadOut(
         tender_id=tender_id,
         document_id=document_id,

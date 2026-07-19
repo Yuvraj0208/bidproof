@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://localhost:4000"
     litellm_master_key: str = "dev-master-key"
 
+    # Dev frontend origin(s), comma-separated.
+    cors_origins: str = "http://localhost:5173"
+
     # Object store (raw tender files).
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "bidproof"

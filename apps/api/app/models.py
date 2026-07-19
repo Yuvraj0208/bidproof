@@ -193,6 +193,52 @@ class Page(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class Rule(Base):
+    """A grounded requirement rule (US-04). el_id is a NOT NULL foreign key
+    into elements — a rule without proof cannot be stored (§9 rule 1)."""
+
+    __tablename__ = "rules"
+
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    family: Mapped[str] = mapped_column(String, nullable=False)
+    key: Mapped[str] = mapped_column(String, nullable=False)
+    requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    value_text: Mapped[str | None] = mapped_column(String)
+    el_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("elements.el_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="extracted"
+    )
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    band: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all

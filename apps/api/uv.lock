@@ -185,6 +185,7 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "bidproof-adapters" },
+    { name = "bidproof-extractor" },
     { name = "bidproof-parser" },
     { name = "bidproof-scout" },
     { name = "bidproof-triage" },
@@ -221,6 +222,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "bidproof-adapters", editable = "../../adapters" },
     { name = "bidproof-adapters", extras = ["gem"], marker = "extra == 'scrapers'", editable = "../../adapters" },
+    { name = "bidproof-extractor", editable = "../../agents/extractor" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
     { name = "bidproof-parser", extras = ["ml"], marker = "extra == 'ml'", editable = "../../agents/parser" },
     { name = "bidproof-scout", editable = "../../agents/scout" },
@@ -244,6 +246,17 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "pyyaml", specifier = ">=6" },
 ]
+
+[[package]]
+name = "bidproof-extractor"
+version = "0.1.0"
+source = { editable = "../../agents/extractor" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
 name = "bidproof-parser"

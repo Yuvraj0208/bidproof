@@ -37,6 +37,14 @@ class ObjectStorage:
             content_type="application/pdf",
         )
 
+    def get_pdf(self, object_key: str) -> bytes:
+        response = self._client.get_object(self._bucket, object_key)
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
     def exists(self, object_key: str) -> bool:
         try:
             self._client.stat_object(self._bucket, object_key)
