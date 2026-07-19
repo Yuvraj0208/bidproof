@@ -3,21 +3,30 @@
 // with their stories.
 import { useEffect, useState } from "react";
 import {
+  computeDecision,
   downloadMatrix,
+  fetchBrief,
   fetchRules,
   fetchVerdicts,
+  overrideDecision,
   runCheck,
   runExtraction,
+  signOffDecision,
   type Rule,
   type Verdict,
 } from "./api";
 import { ConfidenceChip } from "./components/ConfidenceChip";
+import {
+  DecisionRoom,
+  type BriefRisk,
+  type DecisionData,
+} from "./components/DecisionRoom";
 import { MatrixTable } from "./components/MatrixTable";
 import { PdfProof, type Highlight } from "./components/PdfProof";
 
 const FAMILY_ORDER = ["eligibility", "technical", "commercial", "legal", "submission"];
 
-type Tab = "rules" | "matrix";
+type Tab = "rules" | "matrix" | "decision";
 
 export function Workspace({
   tenderId,
@@ -31,6 +40,8 @@ export function Workspace({
   const [tab, setTab] = useState<Tab>("rules");
   const [rules, setRules] = useState<Rule[]>([]);
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
+  const [decision, setDecision] = useState<DecisionData | null>(null);
+  const [risks, setRisks] = useState<BriefRisk[]>([]);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,10 +49,29 @@ export function Workspace({
   const load = () => {
     fetchRules(tenderId).then(setRules).catch(() => setRules([]));
     fetchVerdicts(tenderId).then(setVerdicts).catch(() => setVerdicts([]));
+    fetchBrief(tenderId)
+      .then((brief) => {
+        setDecision(brief.decision as DecisionData | null);
+        setRisks(brief.top_risks as BriefRisk[]);
+      })
+      .catch(() => setDecision(null));
   };
   useEffect(() => {
     load();
   }, [tenderId]);
+
+  const decideNow = async () => {
+    await computeDecision(tenderId);
+    load();
+  };
+  const handleSignOff = async (name: string) => {
+    await signOffDecision(tenderId, name);
+    load();
+  };
+  const handleOverride = async (name: string, rec: string, reason: string) => {
+    await overrideDecision(tenderId, name, rec, reason);
+    load();
+  };
 
   const recheck = async () => {
     setBusy(true);
@@ -67,7 +97,7 @@ export function Workspace({
         </button>
         <h1 className="truncate text-sm font-semibold text-slate-800">{title}</h1>
         <nav className="ml-4 flex gap-1">
-          {(["rules", "matrix"] as Tab[]).map((t) => (
+          {(["rules", "matrix", "decision"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -77,7 +107,11 @@ export function Workspace({
                   : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              {t === "rules" ? `Rules (${rules.length})` : `Matrix (${verdicts.length})`}
+              {t === "rules"
+                ? `Rules (${rules.length})`
+                : t === "matrix"
+                  ? `Matrix (${verdicts.length})`
+                  : "Decision"}
             </button>
           ))}
         </nav>
@@ -100,6 +134,26 @@ export function Workspace({
         </div>
       </header>
 
+      {tab === "decision" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-white">
+          {!decision && (
+            <div className="p-6">
+              <button
+                onClick={decideNow}
+                className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                Compute EV
+              </button>
+            </div>
+          )}
+          <DecisionRoom
+            decision={decision}
+            risks={risks}
+            onSignOff={handleSignOff}
+            onOverride={handleOverride}
+          />
+        </div>
+      ) : (
       <div className="flex min-h-0 flex-1">
         <aside className="w-[30rem] shrink-0 overflow-auto border-r bg-white">
           {tab === "matrix" ? (
@@ -169,6 +223,7 @@ export function Workspace({
           <PdfProof tenderId={tenderId} highlight={highlight} />
         </main>
       </div>
+      )}
     </div>
   );
 }

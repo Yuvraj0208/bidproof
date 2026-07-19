@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     triage_confidence_floor: float = 0.5
     triage_borderline_margin: float = 0.08
 
+    # EV configuration (SPEC §5.6) — the business numbers behind the bid
+    # decision; sponsor-validated (§16), env-overridable per deployment.
+    ev_p_win: float = 0.3
+    ev_profit_margin_percent: float = 10.0
+    ev_man_days: float = 12.0
+    ev_loaded_day_rate_inr: float = 15000.0
+    ev_capital_rate_annual: float = 0.12
+    ev_lock_months: float = 6.0
+
     # Risk thresholds (SPEC §5.5) — org-level policy, sponsor-validated (§16).
     risk_pbg_max_percent: float = 5.0
     risk_emd_max_percent_of_value: float = 2.0

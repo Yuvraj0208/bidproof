@@ -374,6 +374,66 @@ class RiskRow(Base):
     )
 
 
+class Decision(Base):
+    """One decision per tender (US-06). Born pending_signoff — Checkpoint 4
+    never auto-passes; a named human signs or overrides with a reason."""
+
+    __tablename__ = "decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    recommendation: Mapped[str] = mapped_column(String, nullable=False)
+    ev_inr: Mapped[float | None] = mapped_column(Numeric(16, 2))
+    terms: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    gate_failed: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    band: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="pending_signoff"
+    )
+    signed_off_by: Mapped[str | None] = mapped_column(String)
+    signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AuditLog(Base):
+    """Append-only by grants: the app role can INSERT and SELECT, never
+    UPDATE or DELETE (SPEC §14)."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    tender_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all

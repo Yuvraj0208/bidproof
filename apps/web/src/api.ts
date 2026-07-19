@@ -80,6 +80,40 @@ export const runCheck = (tenderId: string) =>
     method: "POST",
   });
 
+export const computeDecision = (tenderId: string, tenderValueInr?: number) =>
+  request<unknown>(`/tenders/${tenderId}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      tenderValueInr != null ? { tender_value_inr: tenderValueInr } : {},
+    ),
+  });
+
+export const fetchBrief = (tenderId: string) =>
+  request<{
+    decision: unknown;
+    top_risks: unknown[];
+  }>(`/tenders/${tenderId}/brief`);
+
+export const signOffDecision = (tenderId: string, name: string) =>
+  request<unknown>(`/tenders/${tenderId}/decision/signoff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+export const overrideDecision = (
+  tenderId: string,
+  name: string,
+  recommendation: string,
+  reason: string,
+) =>
+  request<unknown>(`/tenders/${tenderId}/decision/override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, recommendation, reason }),
+  });
+
 export async function downloadMatrix(tenderId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/matrix.xlsx`, {
     headers: { "X-Org-Id": getOrgId() },
