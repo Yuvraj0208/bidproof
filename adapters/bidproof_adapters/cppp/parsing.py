@@ -1,10 +1,14 @@
-"""Tolerant parsing of the CPPP/eprocure tender feed (RSS-style XML).
+"""Tolerant parsing of the CPPP/eprocure latest-tenders listing. The portal
+serves either RSS-style XML or an HTML table (verified live 2026-07-19:
+columns Sl.No | e-Published | Closing | Opening | Title/Ref/Id | Organisation
+| Corrigendum). `parse_listing` tries XML first, then the table.
 
-Tolerant means: a malformed item is skipped, a missing optional field stays
-None — the parser never invents a value it cannot read (§9 rule 3)."""
+Tolerant means: a malformed item/row is skipped, a missing optional field
+stays None — the parser never invents a value it cannot read (§9 rule 3)."""
 
 import re
 from datetime import datetime, timezone
+from html import unescape
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree
 
@@ -40,6 +44,63 @@ def _external_id(link: str, guid: str | None, title: str) -> str:
     if guid and guid.strip():
         return guid.strip()
     return link or title
+
+
+_ROW_RE = re.compile(r"<tr[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+_TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
+_LINK_RE = re.compile(
+    r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>(.*)', re.IGNORECASE | re.DOTALL
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _clean(html: str) -> str:
+    return " ".join(unescape(_TAG_RE.sub(" ", html)).split())
+
+
+def _parse_listing_dt(text: str) -> datetime | None:
+    try:
+        return datetime.strptime(text, "%d-%b-%Y %I:%M %p").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def parse_html_listing(html: str, portal: str = "cppp") -> list[DiscoveredTender]:
+    """The live portal's table: one row per tender, title cell holding the
+    detail link plus a trailing '/Ref.No./TenderId' — the tender id (last
+    segment) is the stable dedup key."""
+    tenders: list[DiscoveredTender] = []
+    for row_html in _ROW_RE.findall(html):
+        cells = _TD_RE.findall(row_html)
+        if len(cells) < 6:
+            continue
+        link = _LINK_RE.search(cells[4])
+        if not link:
+            continue
+        href, title_html, trailing_html = link.groups()
+        title = _clean(title_html)
+        if not title:
+            continue
+        trailing = _clean(trailing_html).strip("/")
+        external_id = trailing.split("/")[-1].strip() if trailing else unescape(href)
+        tenders.append(
+            DiscoveredTender(
+                portal=portal,
+                external_id=external_id or unescape(href),
+                title=title,
+                url=unescape(href),
+                closing_at=_parse_listing_dt(_clean(cells[2])),
+                organisation=_clean(cells[5]) or None,
+                raw={"published": _clean(cells[1])},
+            )
+        )
+    return tenders
+
+
+def parse_listing(text: str, portal: str = "cppp") -> list[DiscoveredTender]:
+    return parse_feed(text, portal) or parse_html_listing(text, portal)
 
 
 def parse_feed(xml_text: str, portal: str = "cppp") -> list[DiscoveredTender]:

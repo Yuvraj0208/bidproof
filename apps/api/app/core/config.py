@@ -64,7 +64,9 @@ class Settings(BaseSettings):
     scout_enabled: bool = False
     scout_interval_minutes: int = 60  # AC: new tenders within 4 hours
     gem_bids_url: str = "https://bidplus.gem.gov.in/all-bids"
-    cppp_feed_url: str = "https://eprocure.gov.in/cppp/latestactivetendersnew"
+    # Verified against the live portal 2026-07-19 (the shorter path 302s here;
+    # the guard refuses redirects, so we point straight at the final URL).
+    cppp_feed_url: str = "https://eprocure.gov.in/cppp/latestactivetendersnew/cpppdata"
 
 
 @lru_cache

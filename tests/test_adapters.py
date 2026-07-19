@@ -87,6 +87,22 @@ def test_cppp_feed_parses_tenders_and_skips_malformed():
     assert first.organisation == "Department of Space"
 
 
+def test_cppp_html_listing_parses_live_portal_shape():
+    from bidproof_adapters.cppp.parsing import parse_listing
+
+    html = (FIXTURES / "cppp_page.html").read_text(encoding="utf-8")
+    tenders = parse_listing(html)
+
+    assert len(tenders) == 2  # the broken row is skipped, never guessed
+    first = tenders[0]
+    assert first.external_id == "136762"  # trailing Tender Id = dedup key
+    assert first.title == "PAINTING WORKS ATF CONVERSION VASHI"
+    assert first.url.endswith("/tendersfullview/OPAQUE1")
+    assert first.organisation == "Hindustan Petroleum Corporation Limited"
+    assert (first.closing_at.day, first.closing_at.month, first.closing_at.hour) == (3, 8, 15)
+    assert tenders[1].external_id == "2026_MCL_362232_1"
+
+
 def test_gem_bid_cards_parse_and_ignore_cardless_noise():
     html = (FIXTURES / "gem_bids.html").read_text(encoding="utf-8")
     tenders = parse_bid_cards(html, base_url="https://bidplus.gem.gov.in/all-bids")

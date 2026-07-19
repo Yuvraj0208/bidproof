@@ -74,11 +74,21 @@ async def run_discovery(
             "ingested": 0,
             "duplicates": 0,
             "document_failures": 0,
+            "ingest_errors": 0,
         }
         for dt in adapter_run.tenders:
-            outcome = await _ingest_one(
-                org_id, dt, fetcher, storage, ladder, parse_logger
-            )
+            # One bad tender must not sink the run (same isolation principle
+            # as one bad adapter, SPEC §20).
+            try:
+                outcome = await _ingest_one(
+                    org_id, dt, fetcher, storage, ladder, parse_logger
+                )
+            except Exception:
+                logger.exception(
+                    "ingest failed for %s %s", dt.portal, dt.external_id
+                )
+                summary["ingest_errors"] += 1
+                continue
             if outcome == "duplicate":
                 summary["duplicates"] += 1
             else:
