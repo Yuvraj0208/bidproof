@@ -15,6 +15,7 @@ from app.models import Document, Element, Page, ParseRun, Tender
 from app.observability import get_parse_logger
 from app.parsing import get_ladder
 from app.services import ingest
+from app.services import triage as triage_service
 from app.storage import ObjectStorage
 
 router = APIRouter()
@@ -134,6 +135,7 @@ async def upload_tender(
         ladder=ladder,
         parse_logger=parse_logger,
     )
+    background.add_task(triage_service.triage_after_parse, org_id, tender_id)
     return UploadOut(
         tender_id=tender_id,
         document_id=document_id,

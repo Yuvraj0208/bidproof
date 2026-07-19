@@ -22,6 +22,7 @@ from app.models import DiscoveryRun, Document, Tender
 from app.observability import LangfuseParseRunLogger, get_parse_logger
 from app.parsing import get_ladder
 from app.services import ingest
+from app.services import triage as triage_service
 from app.storage import ObjectStorage
 
 logger = logging.getLogger(__name__)
@@ -162,19 +163,22 @@ async def _ingest_one(
             ladder=ladder,
             parse_logger=parse_logger,
         )
+        await triage_service.triage_after_parse(org_id, tender_id)
         return "ingested"
 
     # No document (portal gave no link, or the fetch failed): keep the tender
     # metadata — it is still a discovery — and say so in the report.
     async with org_scoped_session(org_id) as session:
-        session.add(
-            Tender(
-                org_id=org_id,
-                title=dt.title[:500],
-                source=dt.portal,
-                external_id=dt.external_id,
-                portal_url=dt.url,
-                closing_at=dt.closing_at,
-            )
+        tender = Tender(
+            org_id=org_id,
+            title=dt.title[:500],
+            source=dt.portal,
+            external_id=dt.external_id,
+            portal_url=dt.url,
+            closing_at=dt.closing_at,
         )
+        session.add(tender)
+        await session.flush()
+        metadata_tender_id = tender.id
+    await triage_service.triage_after_parse(org_id, metadata_tender_id)
     return "document_failed" if dt.pdf_url else "ingested"

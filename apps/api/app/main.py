@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
-from app.routers import discovery, health, tenders
+from app.routers import discovery, health, radar, tenders
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(tenders.router)
     app.include_router(discovery.router)
+    app.include_router(radar.router)
     return app
 
 

@@ -1,0 +1,106 @@
+"""The Tender Radar (US-02): two lists + the Checkpoint-0 human queue.
+Every card explains itself and carries {confidence, band, reasons} — the
+contract the US-13 confidence chip will render."""
+
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+
+from app.core.db import org_scoped_session
+from app.core.tenancy import require_org_id
+from app.models import Tender
+from app.services import triage as triage_service
+
+router = APIRouter()
+
+VALID_LISTS = {"in_our_lane", "opportunity_radar", "needs_human"}
+
+
+class RadarCard(BaseModel):
+    tender_id: uuid.UUID
+    title: str
+    source: str
+    external_id: str | None
+    closing_at: datetime | None
+    radar_list: str
+    fit_score: float | None
+    confidence: float | None
+    band: str | None
+    matched_category: str | None
+    reasons: list[str]
+    checkpoint0: str | None
+
+
+class ResolveIn(BaseModel):
+    list: str
+    reason: str
+
+
+@router.get("/radar", response_model=list[RadarCard])
+async def radar(
+    list_name: str | None = Query(default=None, alias="list"),
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> list[RadarCard]:
+    if list_name is not None and list_name not in VALID_LISTS:
+        raise HTTPException(400, f"list must be one of {sorted(VALID_LISTS)}")
+
+    async with org_scoped_session(org_id) as session:
+        query = (
+            select(Tender)
+            .where(Tender.radar_list.is_not(None))
+            .order_by(Tender.fit_score.desc().nulls_last())
+        )
+        if list_name:
+            query = query.where(Tender.radar_list == list_name)
+        tenders = (await session.execute(query)).scalars()
+
+        return [
+            RadarCard(
+                tender_id=t.id,
+                title=t.title,
+                source=t.source,
+                external_id=t.external_id,
+                closing_at=t.closing_at,
+                radar_list=t.radar_list,
+                fit_score=t.fit_score,
+                confidence=(t.triage or {}).get("confidence"),
+                band=(t.triage or {}).get("band"),
+                matched_category=(t.triage or {}).get("matched_category"),
+                reasons=(t.triage or {}).get("reasons", []),
+                checkpoint0=(t.triage or {}).get("checkpoint0"),
+            )
+            for t in tenders
+        ]
+
+
+@router.post("/tenders/{tender_id}/triage")
+async def rerun_triage(
+    tender_id: uuid.UUID, org_id: uuid.UUID = Depends(require_org_id)
+) -> dict:
+    result = await triage_service.triage_tender(org_id, tender_id)
+    if result is None:
+        raise HTTPException(404, "tender not found")
+    return result
+
+
+@router.post("/tenders/{tender_id}/triage/resolve")
+async def resolve(
+    tender_id: uuid.UUID,
+    body: ResolveIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> dict:
+    if body.list not in triage_service.RESOLVABLE_LISTS:
+        raise HTTPException(
+            400, f"list must be one of {sorted(triage_service.RESOLVABLE_LISTS)}"
+        )
+    if not body.reason.strip():
+        raise HTTPException(400, "a reason is required to resolve Checkpoint 0")
+    result = await triage_service.resolve_triage(
+        org_id, tender_id, body.list, body.reason.strip()
+    )
+    if result is None:
+        raise HTTPException(404, "tender not found")
+    return result

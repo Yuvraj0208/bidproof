@@ -46,6 +46,18 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3000"
 
+    # Triage / fit score (US-02). Defaults only — each org's profile
+    # (SPEC §15) overrides per tenant; the sponsor validates weights (§16).
+    fit_w_category: float = 0.35
+    fit_w_eligibility: float = 0.25
+    fit_w_value: float = 0.15
+    fit_w_location: float = 0.10
+    fit_w_win_history: float = 0.15
+    triage_in_lane_threshold: float = 0.55
+    triage_radar_threshold: float = 0.45
+    triage_confidence_floor: float = 0.5
+    triage_borderline_margin: float = 0.08
+
     # Scout (US-01). The allow-list is the ONLY set of hosts the Scout can
     # reach — SSRF guard (SPEC §10, §11.4). Comma-separated domains.
     scout_allowed_domains: str = "gem.gov.in,eprocure.gov.in"

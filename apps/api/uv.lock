@@ -187,6 +187,7 @@ dependencies = [
     { name = "bidproof-adapters" },
     { name = "bidproof-parser" },
     { name = "bidproof-scout" },
+    { name = "bidproof-triage" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "langfuse" },
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "bidproof-parser", editable = "../../agents/parser" },
     { name = "bidproof-parser", extras = ["ml"], marker = "extra == 'ml'", editable = "../../agents/parser" },
     { name = "bidproof-scout", editable = "../../agents/scout" },
+    { name = "bidproof-triage", editable = "../../agents/triage" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "langfuse", specifier = ">=2.50" },
@@ -273,6 +275,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "bidproof-adapters", editable = "../../adapters" }]
+
+[[package]]
+name = "bidproof-triage"
+version = "0.1.0"
+source = { editable = "../../agents/triage" }
 
 [[package]]
 name = "certifi"

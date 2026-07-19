@@ -57,7 +57,29 @@ class Tender(Base):
     external_id: Mapped[str | None] = mapped_column(String)
     portal_url: Mapped[str | None] = mapped_column(String)
     closing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Triage (US-02): list assignment + fit + the self-explaining breakdown.
+    radar_list: Mapped[str | None] = mapped_column(String)
+    fit_score: Mapped[float | None] = mapped_column(Float)
+    triage: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class OrgProfile(Base):
+    __tablename__ = "org_profiles"
+
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    categories: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    weights: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    value_band_inr: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    locations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    win_categories: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
