@@ -25,6 +25,7 @@ apps/web/.vite/
 npm-debug.log*
 
 # --- data, stores, artifacts ---
+eval_report.json
 *.log
 uploads/
 minio-data/

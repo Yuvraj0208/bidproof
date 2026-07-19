@@ -1,0 +1,37 @@
+{
+  "tender": "gold-007",
+  "synthetic": true,
+  "note": "starter set - replace with hand-labelled real tenders, same format",
+  "rules": [
+    {
+      "family": "commercial",
+      "key": "emd_amount",
+      "value": "Rs 3,00,000"
+    },
+    {
+      "family": "eligibility",
+      "key": "min_turnover",
+      "value": "Rs 8 crore"
+    },
+    {
+      "family": "commercial",
+      "key": "delivery_days",
+      "value": "90"
+    },
+    {
+      "family": "commercial",
+      "key": "pbg_percent",
+      "value": "3"
+    },
+    {
+      "family": "technical",
+      "key": "required_standard",
+      "value": "ISO 27001"
+    },
+    {
+      "family": "submission",
+      "key": "prebid_query_window_days",
+      "value": "21"
+    }
+  ]
+}

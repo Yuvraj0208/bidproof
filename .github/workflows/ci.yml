@@ -39,6 +39,13 @@ jobs:
         run: uv sync --project apps/api
       - name: Run tests (unit + integration)
         run: uv run --project apps/api pytest -q
+      - name: Publish gold-set evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval_report.json
+          if-no-files-found: ignore
 
   web:
     runs-on: ubuntu-latest
