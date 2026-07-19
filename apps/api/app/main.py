@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import discovery, health, radar, rules, tenders
+from app.routers import capability, discovery, health, radar, rules, tenders
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(discovery.router)
     app.include_router(radar.router)
     app.include_router(rules.router)
+    app.include_router(capability.router)
     return app
 
 

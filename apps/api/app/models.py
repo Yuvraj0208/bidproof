@@ -2,10 +2,11 @@
 classes mirror them for queries and future autogenerate support."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -191,6 +192,68 @@ class Page(Base):
     route: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class CompanyFact(Base):
+    """A verified fact about the company (SPEC §5.4). source + verified_at
+    are NOT NULL — provenance is structural, like el_id on elements."""
+
+    __tablename__ = "company_facts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    fact_type: Mapped[str] = mapped_column(String, nullable=False)
+    legal_entity: Mapped[str | None] = mapped_column(String)
+    fiscal_year: Mapped[str | None] = mapped_column(String)
+    value_text: Mapped[str | None] = mapped_column(String)
+    value_number: Mapped[float | None] = mapped_column(Numeric(16, 2))
+    unit: Mapped[str | None] = mapped_column(String)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CatalogueProduct(Base):
+    """One catalogue item. product_code is the external key that maps 1:1
+    onto SAP/PIM when a real feed replaces manual entry."""
+
+    __tablename__ = "product_catalogue"
+    __table_args__ = (UniqueConstraint("org_id", "product_code"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    product_code: Mapped[str] = mapped_column(String, nullable=False)
+    product_name: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str | None] = mapped_column(String)
+    specs: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    standards: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    lead_time_days: Mapped[int | None] = mapped_column(Integer)
+    plant: Mapped[str | None] = mapped_column(String)
+    capacity_per_month: Mapped[int | None] = mapped_column(Integer)
+    price_band_inr: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class Rule(Base):
