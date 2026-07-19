@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     triage_confidence_floor: float = 0.5
     triage_borderline_margin: float = 0.08
 
+    # Risk thresholds (SPEC §5.5) — org-level policy, sponsor-validated (§16).
+    risk_pbg_max_percent: float = 5.0
+    risk_emd_max_percent_of_value: float = 2.0
+
     # Scout (US-01). The allow-list is the ONLY set of hosts the Scout can
     # reach — SSRF guard (SPEC §10, §11.4). Comma-separated domains.
     scout_allowed_domains: str = "gem.gov.in,eprocure.gov.in"

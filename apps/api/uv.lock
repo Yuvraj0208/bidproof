@@ -186,7 +186,9 @@ dependencies = [
     { name = "asyncpg" },
     { name = "bidproof-adapters" },
     { name = "bidproof-extractor" },
+    { name = "bidproof-matcher" },
     { name = "bidproof-parser" },
+    { name = "bidproof-riskscorer" },
     { name = "bidproof-scout" },
     { name = "bidproof-triage" },
     { name = "fastapi" },
@@ -223,8 +225,10 @@ requires-dist = [
     { name = "bidproof-adapters", editable = "../../adapters" },
     { name = "bidproof-adapters", extras = ["gem"], marker = "extra == 'scrapers'", editable = "../../adapters" },
     { name = "bidproof-extractor", editable = "../../agents/extractor" },
+    { name = "bidproof-matcher", editable = "../../agents/matcher" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
     { name = "bidproof-parser", extras = ["ml"], marker = "extra == 'ml'", editable = "../../agents/parser" },
+    { name = "bidproof-riskscorer", editable = "../../agents/riskscorer" },
     { name = "bidproof-scout", editable = "../../agents/scout" },
     { name = "bidproof-triage", editable = "../../agents/triage" },
     { name = "fastapi", specifier = ">=0.115" },
@@ -259,6 +263,17 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
+name = "bidproof-matcher"
+version = "0.1.0"
+source = { editable = "../../agents/matcher" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
+
+[[package]]
 name = "bidproof-parser"
 version = "0.1.0"
 source = { editable = "../../agents/parser" }
@@ -277,6 +292,11 @@ requires-dist = [
     { name = "pypdfium2", specifier = ">=4.30" },
 ]
 provides-extras = ["ml"]
+
+[[package]]
+name = "bidproof-riskscorer"
+version = "0.1.0"
+source = { editable = "../../agents/riskscorer" }
 
 [[package]]
 name = "bidproof-scout"

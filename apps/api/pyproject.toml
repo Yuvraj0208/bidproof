@@ -16,6 +16,8 @@ dependencies = [
     "bidproof-scout",
     "bidproof-triage",
     "bidproof-extractor",
+    "bidproof-matcher",
+    "bidproof-riskscorer",
     "minio>=7.2",
     "langfuse>=2.50",
     "python-multipart>=0.0.9",
@@ -34,6 +36,8 @@ bidproof-adapters = { path = "../../adapters", editable = true }
 bidproof-scout = { path = "../../agents/scout", editable = true }
 bidproof-triage = { path = "../../agents/triage", editable = true }
 bidproof-extractor = { path = "../../agents/extractor", editable = true }
+bidproof-matcher = { path = "../../agents/matcher", editable = true }
+bidproof-riskscorer = { path = "../../agents/riskscorer", editable = true }
 
 [dependency-groups]
 dev = [
