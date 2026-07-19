@@ -1,9 +1,11 @@
 """Checking endpoints (SPEC §5.5): run the Matcher + RiskScorer, read
-verdicts (joined to their rule + element for click-to-proof) and risks."""
+verdicts (joined to their rule + element for click-to-proof) and risks,
+and export the Compliance Matrix to Excel (US-05 — the money table)."""
 
+import io
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -88,6 +90,64 @@ async def list_verdicts(
             )
             for v, r, e in rows
         ]
+
+
+MATRIX_HEADERS = [
+    "Family", "Key", "Requirement", "Value", "Verdict", "Status", "Reason",
+    "Confidence", "Band", "Arithmetic", "Page", "Proof (el_id)",
+]
+
+
+@router.get("/tenders/{tender_id}/matrix.xlsx")
+async def export_matrix(
+    tender_id: uuid.UUID, org_id: uuid.UUID = Depends(require_org_id)
+) -> Response:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    async with org_scoped_session(org_id) as session:
+        rows = (
+            await session.execute(
+                select(VerdictRow, Rule, Element)
+                .join(Rule, VerdictRow.rule_id == Rule.rule_id)
+                .join(Element, Rule.el_id == Element.el_id)
+                .where(VerdictRow.tender_id == tender_id)
+                .order_by(Rule.family, Rule.key)
+            )
+        ).all()
+    if not rows:
+        raise HTTPException(404, "no verdicts for this tender — run /check first")
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Compliance Matrix"
+    sheet.append(MATRIX_HEADERS)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+
+    queued_fill = PatternFill("solid", start_color="FFF3CD")
+    for verdict, rule, element in rows:
+        status = "QUEUED FOR HUMAN" if verdict.verdict == "needs_human" else "decided"
+        sheet.append([
+            rule.family, rule.key, rule.requirement_text, rule.value_text,
+            verdict.verdict, status, verdict.reason,
+            round(verdict.confidence, 2), verdict.band,
+            "yes" if verdict.arithmetic else "no",
+            element.page_no, str(rule.el_id),
+        ])
+        if verdict.verdict == "needs_human":
+            for cell in sheet[sheet.max_row]:
+                cell.fill = queued_fill
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="matrix-{tender_id}.xlsx"'
+        },
+    )
 
 
 @router.get("/tenders/{tender_id}/risks", response_model=list[RiskOut])

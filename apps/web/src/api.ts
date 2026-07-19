@@ -56,6 +56,43 @@ export const fetchRadar = (list?: string) =>
 export const fetchRules = (tenderId: string) =>
   request<Rule[]>(`/tenders/${tenderId}/rules`);
 
+export interface Verdict {
+  id: string;
+  rule_id: string;
+  family: string;
+  key: string;
+  requirement_text: string;
+  value: string | null;
+  verdict: string;
+  reason: string;
+  confidence: number;
+  band: "green" | "yellow" | "red";
+  arithmetic: boolean;
+  page_no: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+export const fetchVerdicts = (tenderId: string) =>
+  request<Verdict[]>(`/tenders/${tenderId}/verdicts`);
+
+export const runCheck = (tenderId: string) =>
+  request<{ rules_checked: number }>(`/tenders/${tenderId}/check`, {
+    method: "POST",
+  });
+
+export async function downloadMatrix(tenderId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/tenders/${tenderId}/matrix.xlsx`, {
+    headers: { "X-Org-Id": getOrgId() },
+  });
+  if (!response.ok) throw new Error(`${response.status}`);
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `matrix-${tenderId}.xlsx`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export const runExtraction = (tenderId: string) =>
   request<{ rules: number }>(`/tenders/${tenderId}/extract`, { method: "POST" });
 
