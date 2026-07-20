@@ -5,16 +5,23 @@ import { useEffect, useState } from "react";
 import {
   computeDecision,
   downloadMatrix,
+  fetchAgentRuns,
   fetchBrief,
   fetchRules,
   fetchVerdicts,
   overrideDecision,
+  replayTender,
   runCheck,
   runExtraction,
   signOffDecision,
   type Rule,
   type Verdict,
 } from "./api";
+import {
+  AgentConsole,
+  type AgentRunData,
+  type ConsoleTotals,
+} from "./components/AgentConsole";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import {
   DecisionRoom,
@@ -26,7 +33,7 @@ import { PdfProof, type Highlight } from "./components/PdfProof";
 
 const FAMILY_ORDER = ["eligibility", "technical", "commercial", "legal", "submission"];
 
-type Tab = "rules" | "matrix" | "decision";
+type Tab = "rules" | "matrix" | "decision" | "console";
 
 export function Workspace({
   tenderId,
@@ -42,6 +49,9 @@ export function Workspace({
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
   const [decision, setDecision] = useState<DecisionData | null>(null);
   const [risks, setRisks] = useState<BriefRisk[]>([]);
+  const [agentRuns, setAgentRuns] = useState<AgentRunData[]>([]);
+  const [consoleTotals, setConsoleTotals] = useState<ConsoleTotals | null>(null);
+  const [replaying, setReplaying] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,6 +65,22 @@ export function Workspace({
         setRisks(brief.top_risks as BriefRisk[]);
       })
       .catch(() => setDecision(null));
+    fetchAgentRuns(tenderId)
+      .then((console_) => {
+        setAgentRuns(console_.runs as AgentRunData[]);
+        setConsoleTotals(console_.totals as ConsoleTotals);
+      })
+      .catch(() => setAgentRuns([]));
+  };
+
+  const handleReplay = async () => {
+    setReplaying(true);
+    try {
+      await replayTender(tenderId);
+      load();
+    } finally {
+      setReplaying(false);
+    }
   };
   useEffect(() => {
     load();
@@ -97,7 +123,7 @@ export function Workspace({
         </button>
         <h1 className="truncate text-sm font-semibold text-slate-800">{title}</h1>
         <nav className="ml-4 flex gap-1">
-          {(["rules", "matrix", "decision"] as Tab[]).map((t) => (
+          {(["rules", "matrix", "decision", "console"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -111,7 +137,9 @@ export function Workspace({
                 ? `Rules (${rules.length})`
                 : t === "matrix"
                   ? `Matrix (${verdicts.length})`
-                  : "Decision"}
+                  : t === "decision"
+                    ? "Decision"
+                    : `Console (${agentRuns.length})`}
             </button>
           ))}
         </nav>
@@ -134,7 +162,16 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "decision" ? (
+      {tab === "console" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+          <AgentConsole
+            runs={agentRuns}
+            totals={consoleTotals}
+            onReplay={handleReplay}
+            replaying={replaying}
+          />
+        </div>
+      ) : tab === "decision" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-white">
           {!decision && (
             <div className="p-6">

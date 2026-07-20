@@ -20,6 +20,7 @@ venv/
 
 # --- node / web ---
 node_modules/
+*.tsbuildinfo
 apps/web/dist/
 apps/web/.vite/
 npm-debug.log*

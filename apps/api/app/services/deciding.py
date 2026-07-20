@@ -112,7 +112,16 @@ async def compute_decision(
                      "tender_value_inr": tender_value_inr},
         ))
         await session.flush()
-        return _decision_dict(existing)
+        result = _decision_dict(existing)
+
+    from app.observability import record_agent_run
+
+    await record_agent_run(
+        org_id, tender_id, "decider", duration_ms=0,
+        meta={"recommendation": result["recommendation"],
+              "ev_inr": result["ev_inr"]},
+    )
+    return result
 
 
 async def sign_off(org_id: uuid.UUID, tender_id: uuid.UUID, name: str) -> dict | None:

@@ -48,7 +48,9 @@ def build_elements_block(refs: list[ElementRef]) -> str:
     return "<tender_elements>\n" + "\n".join(lines) + "\n</tender_elements>"
 
 
-async def _call_model(gateway: LLMGateway, system: str, user: str) -> str | None:
+async def _call_model(
+    gateway: LLMGateway, system: str, user: str, usage: dict | None = None
+) -> str | None:
     try:
         response = await gateway.complete(
             "mid",
@@ -58,6 +60,9 @@ async def _call_model(gateway: LLMGateway, system: str, user: str) -> str | None
             ],
             temperature=0,
         )
+        if usage is not None and isinstance(response.get("usage"), dict):
+            usage["in"] = usage.get("in", 0) + int(response["usage"].get("prompt_tokens", 0))
+            usage["out"] = usage.get("out", 0) + int(response["usage"].get("completion_tokens", 0))
         return response["choices"][0]["message"]["content"]
     except Exception as exc:
         logger.warning("extractor model call failed: %s", exc)
@@ -65,11 +70,11 @@ async def _call_model(gateway: LLMGateway, system: str, user: str) -> str | None
 
 
 async def _ai_extract(
-    gateway: LLMGateway, refs: list[ElementRef]
+    gateway: LLMGateway, refs: list[ElementRef], usage: dict | None = None
 ) -> tuple[list[AiRule], str | None]:
     block = build_elements_block(refs)
     for _attempt in range(1 + SCHEMA_RETRIES):
-        raw = await _call_model(gateway, EXTRACTOR_PROMPT_V1, block)
+        raw = await _call_model(gateway, EXTRACTOR_PROMPT_V1, block, usage)
         if raw is None:
             return [], "model unavailable — pattern extraction only"
         parsed = parse_ai_response(raw)
@@ -110,6 +115,13 @@ async def _vote_values(
 async def extract_rules(
     org_id: uuid.UUID, tender_id: uuid.UUID, gateway: LLMGateway | None = None
 ) -> dict | None:
+    import time
+
+    from app.core.config import get_settings
+    from app.observability import record_agent_run
+
+    started = time.monotonic()
+    usage: dict = {}
     async with org_scoped_session(org_id) as session:
         document = (
             await session.execute(
@@ -140,7 +152,7 @@ async def extract_rules(
     grounded_ai: list[CandidateRule] = []
     discarded = 0
     if gateway is not None:
-        ai_rules, ai_note = await _ai_extract(gateway, refs)
+        ai_rules, ai_note = await _ai_extract(gateway, refs, usage)
         grounded_ai, discarded = ground_check(ai_rules, by_id)
 
     merged, disputes = compare_and_merge(pattern_rules, grounded_ai)
@@ -171,6 +183,19 @@ async def extract_rules(
                 )
             )
 
+    tokens_in, tokens_out = usage.get("in", 0), usage.get("out", 0)
+    cost_inr = round(
+        (tokens_in + tokens_out) / 1000 * get_settings().llm_cost_per_1k_tokens_inr, 4
+    )
+    await record_agent_run(
+        org_id, tender_id, "extractor",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        model_role="mid" if gateway is not None else None,
+        prompt_version="extractor_v1" if gateway is not None else None,
+        tokens_in=tokens_in, tokens_out=tokens_out, cost_inr=cost_inr,
+        meta={"rules": len(merged), "discarded_uncited": discarded,
+              "note": ai_note},
+    )
     return {
         "rules": len(merged),
         "needs_human": sum(1 for r in merged if r.status == "needs_human"),

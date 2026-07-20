@@ -117,10 +117,25 @@ async def triage_tender(org_id: uuid.UUID, tender_id: uuid.UUID) -> dict | None:
 
 async def triage_after_parse(org_id: uuid.UUID, tender_id: uuid.UUID) -> None:
     """Post-parse hook: triage must never take ingestion down."""
+    import time
+
+    from app.observability import record_agent_run
+
+    started = time.monotonic()
     try:
-        await triage_tender(org_id, tender_id)
+        result = await triage_tender(org_id, tender_id)
+        await record_agent_run(
+            org_id, tender_id, "triage",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            meta={"radar_list": (result or {}).get("radar_list"),
+                  "fit_score": (result or {}).get("fit_score")},
+        )
     except Exception:
         logger.exception("triage failed for tender %s", tender_id)
+        await record_agent_run(
+            org_id, tender_id, "triage", status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
 
 
 async def resolve_triage(

@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.routers import (
     capability,
     checks,
+    console,
     decision,
     discovery,
     health,
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(capability.router)
     app.include_router(checks.router)
     app.include_router(decision.router)
+    app.include_router(console.router)
     return app
 
 

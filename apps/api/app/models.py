@@ -434,6 +434,42 @@ class AuditLog(Base):
     )
 
 
+class AgentRun(Base):
+    """One recorded agent call (SPEC §13): the Agent Console's ledger."""
+
+    __tablename__ = "agent_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trace_id: Mapped[str] = mapped_column(String, nullable=False)
+    agent: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="ok")
+    model_role: Mapped[str | None] = mapped_column(String)
+    prompt_version: Mapped[str | None] = mapped_column(String)
+    tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_inr: Mapped[float] = mapped_column(
+        Numeric(12, 4), nullable=False, default=0
+    )
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all

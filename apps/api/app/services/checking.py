@@ -96,6 +96,9 @@ async def _judge(gateway: LLMGateway | None, rule: CheckRule,
 
 async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
                      gateway: LLMGateway | None = None) -> dict | None:
+    import time
+
+    checks_started = time.monotonic()
     async with org_scoped_session(org_id) as session:
         tender = await session.get(Tender, tender_id)
         if tender is None:
@@ -175,6 +178,23 @@ async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
     counts: dict[str, int] = {}
     for _, result in results:
         counts[result.verdict.value] = counts.get(result.verdict.value, 0) + 1
+
+    import time
+
+    from app.observability import record_agent_run
+
+    duration_ms = int((time.monotonic() - checks_started) * 1000)
+    await record_agent_run(
+        org_id, tender_id, "matcher", duration_ms=duration_ms,
+        model_role="mid" if model_calls else None,
+        prompt_version="judge_v1" if model_calls else None,
+        meta={"rules_checked": len(results), "verdicts": counts,
+              "model_calls": model_calls},
+    )
+    await record_agent_run(
+        org_id, tender_id, "riskscorer", duration_ms=0,
+        meta={"flags": [f.code for f in risk_flags]},
+    )
     return {
         "rules_checked": len(results),
         "verdicts": counts,

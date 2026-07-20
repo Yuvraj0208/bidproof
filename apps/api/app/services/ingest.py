@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
 from app.models import Document, Element, Page, ParseRun, Tender
-from app.observability import ParseRunLog
+from app.observability import ParseRunLog, record_agent_run
 from app.storage import ObjectStorage
 from bidproof_parser import ParserLadder, compute_parse_cost_inr
 
@@ -169,6 +169,11 @@ async def execute_parse_run(
                 error=str(exc)[:500],
             )
         )
+        await record_agent_run(
+            org_id, tender_id, "parser", status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            meta={"error": str(exc)[:300]},
+        )
         return
 
     # Rupee cost is plain arithmetic — never a model (§9 rule 2).
@@ -240,4 +245,11 @@ async def execute_parse_run(
             cost_inr=cost_inr,
             duration_s=round(time.monotonic() - started, 3),
         )
+    )
+    await record_agent_run(
+        org_id, tender_id, "parser",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        cost_inr=cost_inr,
+        meta={"pages_total": result.pages_total, "pages_ocr": result.pages_ocr,
+              "pages_flagged": result.pages_flagged, "elements": element_count},
     )

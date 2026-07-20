@@ -75,3 +75,45 @@ def _default_logger() -> LangfuseParseRunLogger:
 
 def get_parse_logger() -> LangfuseParseRunLogger:
     return _default_logger()
+
+
+async def record_agent_run(
+    org_id,
+    tender_id,
+    agent: str,
+    *,
+    duration_ms: int,
+    status: str = "ok",
+    model_role: str | None = None,
+    prompt_version: str | None = None,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cost_inr: float = 0.0,
+    meta: dict | None = None,
+) -> None:
+    """One recorded step under the tender's trace id (SPEC §13). Recording
+    must never take the pipeline down — failures are logged and swallowed."""
+    from app.core.db import org_scoped_session
+    from app.models import AgentRun
+
+    try:
+        async with org_scoped_session(org_id) as session:
+            session.add(
+                AgentRun(
+                    org_id=org_id,
+                    tender_id=tender_id,
+                    trace_id=tender_id.hex,
+                    agent=agent,
+                    status=status,
+                    model_role=model_role,
+                    prompt_version=prompt_version,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_inr=cost_inr,
+                    duration_ms=duration_ms,
+                    meta=meta or {},
+                )
+            )
+    except Exception:
+        logger.warning("failed to record agent run %s/%s", agent, tender_id,
+                       exc_info=True)

@@ -114,6 +114,16 @@ export const overrideDecision = (
     body: JSON.stringify({ name, recommendation, reason }),
   });
 
+export const fetchAgentRuns = (tenderId: string) =>
+  request<{ runs: unknown[]; totals: unknown }>(
+    `/tenders/${tenderId}/agent-runs`,
+  );
+
+export const replayTender = (tenderId: string) =>
+  request<{ replayed: boolean }>(`/tenders/${tenderId}/replay`, {
+    method: "POST",
+  });
+
 export async function downloadMatrix(tenderId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/matrix.xlsx`, {
     headers: { "X-Org-Id": getOrgId() },

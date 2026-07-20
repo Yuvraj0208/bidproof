@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # Dev frontend origin(s), comma-separated.
     cors_origins: str = "http://localhost:5173"
 
+    # Rupee cost per 1k tokens through the gateway; per-role pricing arrives
+    # with the Model Lab (US-14). 0 while no hosted model is configured.
+    llm_cost_per_1k_tokens_inr: float = 0.0
+
     # Object store (raw tender files).
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "bidproof"
