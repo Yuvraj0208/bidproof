@@ -9,18 +9,22 @@ import {
   fetchAgentRuns,
   fetchAmendments,
   fetchBrief,
+  fetchQuestions,
   fetchRules,
   fetchVerdicts,
+  generateQuestions,
   overrideDecision,
   replayTender,
   runCheck,
   runExtraction,
   signOffDecision,
   type Amendment,
+  type QueryLetter,
   type Rule,
   type Verdict,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
+import { QuestionsPanel } from "./components/QuestionsPanel";
 import {
   AgentConsole,
   type AgentRunData,
@@ -37,7 +41,13 @@ import { PdfProof, type Highlight } from "./components/PdfProof";
 
 const FAMILY_ORDER = ["eligibility", "technical", "commercial", "legal", "submission"];
 
-type Tab = "rules" | "matrix" | "decision" | "console" | "amendments";
+type Tab =
+  | "rules"
+  | "matrix"
+  | "decision"
+  | "console"
+  | "amendments"
+  | "questions";
 
 export function Workspace({
   tenderId,
@@ -58,6 +68,8 @@ export function Workspace({
   const [replaying, setReplaying] = useState(false);
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [amending, setAmending] = useState(false);
+  const [letters, setLetters] = useState<QueryLetter[]>([]);
+  const [drafting, setDrafting] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +90,17 @@ export function Workspace({
       })
       .catch(() => setAgentRuns([]));
     fetchAmendments(tenderId).then(setAmendments).catch(() => setAmendments([]));
+    fetchQuestions(tenderId).then(setLetters).catch(() => setLetters([]));
+  };
+
+  const handleDraftQuestions = async () => {
+    setDrafting(true);
+    try {
+      await generateQuestions(tenderId);
+      load();
+    } finally {
+      setDrafting(false);
+    }
   };
 
   const handleReplay = async () => {
@@ -140,8 +163,16 @@ export function Workspace({
         </button>
         <h1 className="truncate text-sm font-semibold text-slate-800">{title}</h1>
         <nav className="ml-4 flex gap-1">
-          {(["rules", "matrix", "decision", "console", "amendments"] as Tab[]).map(
-            (t) => (
+          {(
+            [
+              "rules",
+              "matrix",
+              "decision",
+              "console",
+              "amendments",
+              "questions",
+            ] as Tab[]
+          ).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -159,10 +190,11 @@ export function Workspace({
                       ? "Decision"
                       : t === "console"
                         ? `Console (${agentRuns.length})`
-                        : `Amendments${amendments.length ? ` (${amendments.length})` : ""}`}
+                        : t === "amendments"
+                          ? `Amendments${amendments.length ? ` (${amendments.length})` : ""}`
+                          : `Questions${letters.length ? ` (${letters.length})` : ""}`}
               </button>
-            ),
-          )}
+          ))}
         </nav>
         <div className="ml-auto flex gap-2">
           {tab === "matrix" && verdicts.length > 0 && (
@@ -183,7 +215,15 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "amendments" ? (
+      {tab === "questions" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+          <QuestionsPanel
+            letters={letters}
+            onGenerate={handleDraftQuestions}
+            busy={drafting}
+          />
+        </div>
+      ) : tab === "amendments" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
           <AmendmentsPanel
             amendments={amendments}

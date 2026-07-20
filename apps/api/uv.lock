@@ -189,6 +189,7 @@ dependencies = [
     { name = "bidproof-extractor" },
     { name = "bidproof-matcher" },
     { name = "bidproof-parser" },
+    { name = "bidproof-questionwriter" },
     { name = "bidproof-riskscorer" },
     { name = "bidproof-scout" },
     { name = "bidproof-triage" },
@@ -231,6 +232,7 @@ requires-dist = [
     { name = "bidproof-matcher", editable = "../../agents/matcher" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
     { name = "bidproof-parser", extras = ["ml"], marker = "extra == 'ml'", editable = "../../agents/parser" },
+    { name = "bidproof-questionwriter", editable = "../../agents/questionwriter" },
     { name = "bidproof-riskscorer", editable = "../../agents/riskscorer" },
     { name = "bidproof-scout", editable = "../../agents/scout" },
     { name = "bidproof-triage", editable = "../../agents/triage" },
@@ -301,6 +303,11 @@ requires-dist = [
     { name = "pypdfium2", specifier = ">=4.30" },
 ]
 provides-extras = ["ml"]
+
+[[package]]
+name = "bidproof-questionwriter"
+version = "0.1.0"
+source = { editable = "../../agents/questionwriter" }
 
 [[package]]
 name = "bidproof-riskscorer"

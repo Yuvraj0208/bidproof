@@ -511,6 +511,48 @@ class Amendment(Base):
     )
 
 
+class QueryLetter(Base):
+    """A drafted pre-bid query letter (US-08). Grounded to the rule it
+    queries; the system only ever writes it as a draft (SPEC §5.8, §10)."""
+
+    __tablename__ = "query_letters"
+    __table_args__ = (UniqueConstraint("rule_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("rules.rule_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    el_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("elements.el_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rule_key: Mapped[str] = mapped_column(String, nullable=False)
+    page_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    subject: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    query_deadline: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="draft")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all

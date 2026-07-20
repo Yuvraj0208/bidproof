@@ -348,8 +348,13 @@ def _build_risk_inputs(by_key: dict, closing_at, products: list[ProductRef]) -> 
 
 
 async def check_after_extract(org_id: uuid.UUID, tender_id: uuid.UUID) -> None:
-    """Post-extraction hook: checking must never take ingestion down."""
+    """Post-extraction hook: checking must never take ingestion down. Once
+    verdicts exist, draft pre-bid queries for the rules we fail (US-08)."""
     try:
         await run_checks(org_id, tender_id, gateway=get_checking_gateway())
     except Exception:
         logger.exception("checking failed for tender %s", tender_id)
+        return
+    from app.services import questions
+
+    await questions.generate_after_check(org_id, tender_id)

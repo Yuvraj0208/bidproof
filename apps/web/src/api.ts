@@ -73,6 +73,26 @@ export interface Amendment {
 export const fetchAmendments = (tenderId: string) =>
   request<Amendment[]>(`/tenders/${tenderId}/amendments`);
 
+export interface QueryLetter {
+  id: string;
+  rule_id: string;
+  rule_key: string;
+  el_id: string;
+  page_no: number;
+  subject: string;
+  body: string;
+  query_deadline: string | null;
+  status: string;
+}
+
+export const fetchQuestions = (tenderId: string) =>
+  request<QueryLetter[]>(`/tenders/${tenderId}/questions`);
+
+export const generateQuestions = (tenderId: string) =>
+  request<{ letters: number }>(`/tenders/${tenderId}/questions`, {
+    method: "POST",
+  });
+
 export async function amendTender(tenderId: string, file: File): Promise<Amendment> {
   const form = new FormData();
   form.append("file", file);
