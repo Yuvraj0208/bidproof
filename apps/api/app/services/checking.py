@@ -34,6 +34,7 @@ from app.confidence import band_for
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
 from app.llm.gateway import LLMGateway
+from app.observability import record_agent_run
 from app.models import (
     CatalogueProduct,
     CompanyFact,
@@ -94,6 +95,146 @@ async def _judge(gateway: LLMGateway | None, rule: CheckRule,
         cited_product_id=call.product_id)
 
 
+async def _verdicts_for(rules, facts, products, gateway, today
+                        ) -> tuple[list[tuple[CheckRule, VerdictResult]], int]:
+    """The matcher core: arithmetic first, cited judge second. Shared by the
+    full check and the amendment's affected-only re-check."""
+    retriever = KeywordRetriever()
+    results: list[tuple[CheckRule, VerdictResult]] = []
+    model_calls = 0
+    for rule in rules:
+        arithmetic_result = check_rule(rule, facts, products, today)
+        if arithmetic_result is not None:
+            results.append((rule, arithmetic_result))
+            continue
+        candidates = retriever.retrieve(rule.requirement_text, products)
+        judged = await _judge(gateway, rule, candidates)
+        model_calls += 1 if gateway is not None and candidates else 0
+        results.append((rule, judged))
+    return results, model_calls
+
+
+async def _load_capability(session):
+    facts = [
+        FactRef(id=str(f.id), fact_type=f.fact_type, value_text=f.value_text,
+                value_number=float(f.value_number) if f.value_number is not None else None,
+                fiscal_year=f.fiscal_year, valid_until=f.valid_until)
+        for f in (await session.execute(select(CompanyFact))).scalars()
+    ]
+    products = [
+        ProductRef(id=str(p.id), product_code=p.product_code,
+                   product_name=p.product_name,
+                   standards=tuple(p.standards or []),
+                   lead_time_days=p.lead_time_days, specs=p.specs or {})
+        for p in (await session.execute(select(CatalogueProduct))).scalars()
+    ]
+    return facts, products
+
+
+def _persist_verdict(session, org_id, tender_id, rule, result) -> None:
+    session.add(VerdictRow(
+        org_id=org_id, tender_id=tender_id,
+        rule_id=uuid.UUID(rule.rule_id),
+        verdict=result.verdict.value, reason=result.reason,
+        confidence=result.confidence, band=band_for(result.confidence),
+        arithmetic=result.arithmetic,
+        cited_fact_id=uuid.UUID(result.cited_fact_id) if result.cited_fact_id else None,
+        cited_product_id=uuid.UUID(result.cited_product_id) if result.cited_product_id else None,
+    ))
+
+
+async def recheck_rules(org_id: uuid.UUID, tender_id: uuid.UUID,
+                        rule_ids: list[uuid.UUID],
+                        gateway: LLMGateway | None = None) -> dict:
+    """Re-check ONLY the given rules (US-07): the matcher touches exactly the
+    affected keys, not the whole tender. Returns the before/after verdicts so
+    the amendment can report which rules broke."""
+    if not rule_ids:
+        return {"rechecked": 0, "changed": []}
+    async with org_scoped_session(org_id) as session:
+        rows = (
+            await session.execute(
+                select(Rule).where(Rule.rule_id.in_(rule_ids))
+            )
+        ).scalars().all()
+        rules = [
+            CheckRule(rule_id=str(r.rule_id), family=r.family, key=r.key,
+                      requirement_text=r.requirement_text, value_text=r.value_text,
+                      el_id=str(r.el_id))
+            for r in rows
+        ]
+        before = {
+            str(v.rule_id): v.verdict
+            for v in (
+                await session.execute(
+                    select(VerdictRow).where(VerdictRow.rule_id.in_(rule_ids))
+                )
+            ).scalars()
+        }
+        facts, products = await _load_capability(session)
+
+    results, model_calls = await _verdicts_for(
+        rules, facts, products, gateway, date.today()
+    )
+
+    changed = []
+    async with org_scoped_session(org_id) as session:
+        await session.execute(
+            delete(VerdictRow).where(VerdictRow.rule_id.in_(rule_ids))
+        )
+        for rule, result in results:
+            _persist_verdict(session, org_id, tender_id, rule, result)
+            old = before.get(rule.rule_id)
+            if old != result.verdict.value:
+                changed.append({"rule_id": rule.rule_id, "key": rule.key,
+                                "from": old, "to": result.verdict.value})
+
+    await record_agent_run(
+        org_id, tender_id, "matcher", duration_ms=0,
+        model_role="mid" if model_calls else None,
+        prompt_version="judge_v1" if model_calls else None,
+        meta={"rechecked": len(rules), "affected_only": True,
+              "changed": [c["key"] for c in changed]},
+    )
+    await _rescore_risks(org_id, tender_id)
+    return {"rechecked": len(rules), "changed": changed}
+
+
+async def _rescore_risks(org_id: uuid.UUID, tender_id: uuid.UUID) -> None:
+    """Risks are tender-wide and deterministic (no model). Re-derive them
+    from the current rule set after an amendment."""
+    async with org_scoped_session(org_id) as session:
+        tender = await session.get(Tender, tender_id)
+        rules = (
+            await session.execute(select(Rule).where(Rule.tender_id == tender_id))
+        ).scalars().all()
+        _, products = await _load_capability(session)
+        by_key = {
+            r.key: (CheckRule(rule_id=str(r.rule_id), family=r.family, key=r.key,
+                              requirement_text=r.requirement_text,
+                              value_text=r.value_text, el_id=str(r.el_id)), None)
+            for r in rules
+        }
+        closing_at = tender.closing_at if tender else None
+
+    settings = get_settings()
+    risk_inputs = _build_risk_inputs(by_key, closing_at, products)
+    risk_flags = score_risks(
+        risk_inputs,
+        RiskThresholds(pbg_max_percent=settings.risk_pbg_max_percent,
+                       emd_max_percent_of_value=settings.risk_emd_max_percent_of_value),
+    )
+    async with org_scoped_session(org_id) as session:
+        await session.execute(delete(RiskRow).where(RiskRow.tender_id == tender_id))
+        for flag in risk_flags:
+            session.add(RiskRow(
+                org_id=org_id, tender_id=tender_id, code=flag.code,
+                severity=flag.severity, message=flag.message,
+                rupee_impact=flag.rupee_impact,
+                el_id=uuid.UUID(flag.el_id) if flag.el_id else None,
+            ))
+
+
 async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
                      gateway: LLMGateway | None = None) -> dict | None:
     import time
@@ -113,34 +254,11 @@ async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
                 await session.execute(select(Rule).where(Rule.tender_id == tender_id))
             ).scalars()
         ]
-        facts = [
-            FactRef(id=str(f.id), fact_type=f.fact_type, value_text=f.value_text,
-                    value_number=float(f.value_number) if f.value_number is not None else None,
-                    fiscal_year=f.fiscal_year, valid_until=f.valid_until)
-            for f in (await session.execute(select(CompanyFact))).scalars()
-        ]
-        products = [
-            ProductRef(id=str(p.id), product_code=p.product_code,
-                       product_name=p.product_name,
-                       standards=tuple(p.standards or []),
-                       lead_time_days=p.lead_time_days, specs=p.specs or {})
-            for p in (await session.execute(select(CatalogueProduct))).scalars()
-        ]
+        facts, products = await _load_capability(session)
         closing_at = tender.closing_at
 
     today = date.today()
-    retriever = KeywordRetriever()
-    results: list[tuple[CheckRule, VerdictResult]] = []
-    model_calls = 0
-    for rule in rules:
-        arithmetic_result = check_rule(rule, facts, products, today)
-        if arithmetic_result is not None:
-            results.append((rule, arithmetic_result))
-            continue
-        candidates = retriever.retrieve(rule.requirement_text, products)
-        judged = await _judge(gateway, rule, candidates)
-        model_calls += 1 if gateway is not None and candidates else 0
-        results.append((rule, judged))
+    results, model_calls = await _verdicts_for(rules, facts, products, gateway, today)
 
     by_key = {r.key: (r, v) for r, v in results}
     risk_inputs = _build_risk_inputs(by_key, closing_at, products)
@@ -154,19 +272,10 @@ async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
     )
 
     async with org_scoped_session(org_id) as session:
-        rule_ids = [uuid.UUID(r.rule_id) for r, _ in results]
         await session.execute(delete(VerdictRow).where(VerdictRow.tender_id == tender_id))
         await session.execute(delete(RiskRow).where(RiskRow.tender_id == tender_id))
         for rule, result in results:
-            session.add(VerdictRow(
-                org_id=org_id, tender_id=tender_id,
-                rule_id=uuid.UUID(rule.rule_id),
-                verdict=result.verdict.value, reason=result.reason,
-                confidence=result.confidence, band=band_for(result.confidence),
-                arithmetic=result.arithmetic,
-                cited_fact_id=uuid.UUID(result.cited_fact_id) if result.cited_fact_id else None,
-                cited_product_id=uuid.UUID(result.cited_product_id) if result.cited_product_id else None,
-            ))
+            _persist_verdict(session, org_id, tender_id, rule, result)
         for flag in risk_flags:
             session.add(RiskRow(
                 org_id=org_id, tender_id=tender_id, code=flag.code,
@@ -178,10 +287,6 @@ async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
     counts: dict[str, int] = {}
     for _, result in results:
         counts[result.verdict.value] = counts.get(result.verdict.value, 0) + 1
-
-    import time
-
-    from app.observability import record_agent_run
 
     duration_ms = int((time.monotonic() - checks_started) * 1000)
     await record_agent_run(

@@ -41,6 +41,7 @@ export interface Rule {
   requirement_text: string;
   value: string | null;
   el_id: string;
+  document_id: string;
   page_no: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
   source: string;
@@ -48,6 +49,40 @@ export interface Rule {
   confidence: number;
   band: "green" | "yellow" | "red";
   reason: string;
+}
+
+export interface Amendment {
+  id: string;
+  document_id: string;
+  message: string;
+  changes: {
+    key: string;
+    family: string;
+    change: string;
+    old_value: string | null;
+    new_value: string | null;
+    page: number | null;
+  }[];
+  rules_affected: string[];
+  rules_broken: string[];
+  ev_before_inr: number | null;
+  ev_after_inr: number | null;
+  created_at: string;
+}
+
+export const fetchAmendments = (tenderId: string) =>
+  request<Amendment[]>(`/tenders/${tenderId}/amendments`);
+
+export async function amendTender(tenderId: string, file: File): Promise<Amendment> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}/tenders/${tenderId}/amend`, {
+    method: "POST",
+    headers: { "X-Org-Id": getOrgId() },
+    body: form,
+  });
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.json();
 }
 
 export const fetchRadar = (list?: string) =>
@@ -68,6 +103,7 @@ export interface Verdict {
   confidence: number;
   band: "green" | "yellow" | "red";
   arithmetic: boolean;
+  document_id: string;
   page_no: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
 }
@@ -142,6 +178,16 @@ export const runExtraction = (tenderId: string) =>
 
 export async function fetchDocumentBlob(tenderId: string): Promise<ArrayBuffer> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/document`, {
+    headers: { "X-Org-Id": getOrgId() },
+  });
+  if (!response.ok) throw new Error(`${response.status}`);
+  return response.arrayBuffer();
+}
+
+export async function fetchDocumentBlobById(
+  documentId: string,
+): Promise<ArrayBuffer> {
+  const response = await fetch(`${API_BASE}/documents/${documentId}/file`, {
     headers: { "X-Org-Id": getOrgId() },
   });
   if (!response.ok) throw new Error(`${response.status}`);

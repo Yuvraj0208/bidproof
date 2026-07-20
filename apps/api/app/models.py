@@ -128,6 +128,10 @@ class Document(Base):
     bucket: Mapped[str] = mapped_column(String, nullable=False)
     object_key: Mapped[str] = mapped_column(String, nullable=False)
     page_count: Mapped[int | None] = mapped_column(Integer)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    kind: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="original"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -396,6 +400,7 @@ class Decision(Base):
     )
     recommendation: Mapped[str] = mapped_column(String, nullable=False)
     ev_inr: Mapped[float | None] = mapped_column(Numeric(16, 2))
+    tender_value_inr: Mapped[float | None] = mapped_column(Numeric(16, 2))
     terms: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     gate_failed: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
@@ -465,6 +470,42 @@ class AgentRun(Base):
     )
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Amendment(Base):
+    """One corrigendum's effect on a tender (US-07): the cited change list,
+    the rules it affected/broke, and the EV before vs after."""
+
+    __tablename__ = "amendments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    changes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    rules_affected: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    rules_broken: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    ev_before_inr: Mapped[float | None] = mapped_column(Numeric(16, 2))
+    ev_after_inr: Mapped[float | None] = mapped_column(Numeric(16, 2))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

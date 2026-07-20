@@ -73,7 +73,10 @@ async def triage_tender(org_id: uuid.UUID, tender_id: uuid.UUID) -> dict | None:
 
         document = (
             await session.execute(
-                select(Document.id).where(Document.tender_id == tender_id)
+                select(Document.id)
+                .where(Document.tender_id == tender_id)
+                .order_by(Document.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         text = ""

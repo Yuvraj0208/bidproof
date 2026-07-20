@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.routers import (
+    amendment,
     capability,
     checks,
     console,
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(checks.router)
     app.include_router(decision.router)
     app.include_router(console.router)
+    app.include_router(amendment.router)
     return app
 
 

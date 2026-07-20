@@ -15,6 +15,7 @@ const ROW: VerdictRow = {
   confidence: 0.95,
   band: "green",
   arithmetic: true,
+  document_id: "doc-1",
   page_no: 1,
   bbox: { x0: 73, y0: 188, x1: 369, y1: 198 },
 };
@@ -51,6 +52,10 @@ describe("MatrixTable", () => {
     const onProof = vi.fn();
     render(<MatrixTable verdicts={[ROW]} onProof={onProof} />);
     fireEvent.click(screen.getByTestId("matrix-row"));
-    expect(onProof).toHaveBeenCalledWith({ page_no: 1, bbox: ROW.bbox });
+    expect(onProof).toHaveBeenCalledWith({
+      page_no: 1,
+      bbox: ROW.bbox,
+      document_id: "doc-1",
+    });
   });
 });

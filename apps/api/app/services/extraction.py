@@ -112,6 +112,31 @@ async def _vote_values(
     return values
 
 
+async def build_candidate_rules(
+    refs: list[ElementRef], gateway: LLMGateway | None, usage: dict | None = None
+) -> tuple[list[CandidateRule], int, str | None]:
+    """The dual-extractor core (pattern + cited AI + compare + vote), grounded
+    to the given elements. Returns (merged rules, discarded_uncited, note).
+    Shared by full extraction and the Amendment Watcher — no persistence."""
+    by_id = {r.el_id: r for r in refs}
+    pattern_rules = extract_pattern_rules(refs)
+
+    ai_note: str | None = None
+    grounded_ai: list[CandidateRule] = []
+    discarded = 0
+    if gateway is not None:
+        ai_rules, ai_note = await _ai_extract(gateway, refs, usage)
+        grounded_ai, discarded = ground_check(ai_rules, by_id)
+
+    merged, disputes = compare_and_merge(pattern_rules, grounded_ai)
+    for pattern_rule, _ai_rule in disputes:
+        votes = (
+            await _vote_values(gateway, refs, pattern_rule.key) if gateway else []
+        )
+        merged.append(resolve_vote(pattern_rule, votes))
+    return merged, discarded, ai_note
+
+
 async def extract_rules(
     org_id: uuid.UUID, tender_id: uuid.UUID, gateway: LLMGateway | None = None
 ) -> dict | None:
@@ -125,7 +150,10 @@ async def extract_rules(
     async with org_scoped_session(org_id) as session:
         document = (
             await session.execute(
-                select(Document).where(Document.tender_id == tender_id)
+                select(Document)
+                .where(Document.tender_id == tender_id)
+                .order_by(Document.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         if document is None:
@@ -145,22 +173,7 @@ async def extract_rules(
     if not refs:
         return {"rules": 0, "note": "no parsed elements to extract from"}
 
-    by_id = {r.el_id: r for r in refs}
-    pattern_rules = extract_pattern_rules(refs)
-
-    ai_note: str | None = None
-    grounded_ai: list[CandidateRule] = []
-    discarded = 0
-    if gateway is not None:
-        ai_rules, ai_note = await _ai_extract(gateway, refs, usage)
-        grounded_ai, discarded = ground_check(ai_rules, by_id)
-
-    merged, disputes = compare_and_merge(pattern_rules, grounded_ai)
-    for pattern_rule, _ai_rule in disputes:
-        votes = (
-            await _vote_values(gateway, refs, pattern_rule.key) if gateway else []
-        )
-        merged.append(resolve_vote(pattern_rule, votes))
+    merged, discarded, ai_note = await build_candidate_rules(refs, gateway, usage)
 
     async with org_scoped_session(org_id) as session:
         await session.execute(delete(Rule).where(Rule.document_id == document.id))

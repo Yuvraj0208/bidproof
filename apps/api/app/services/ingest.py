@@ -109,6 +109,52 @@ async def create_tender_with_document(
         return tender.id, document.id, run.id, object_key
 
 
+async def add_document_to_tender(
+    org_id: uuid.UUID,
+    tender_id: uuid.UUID,
+    *,
+    filename: str,
+    data: bytes,
+    storage: ObjectStorage,
+    kind: str = "corrigendum",
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Attach a new document version (a corrigendum) to an existing tender.
+    Returns (document_id, parse_run_id). Dedup by sha256 still applies."""
+    from sqlalchemy import func as sql_func
+
+    sha = hashlib.sha256(data).hexdigest()
+    async with org_scoped_session(org_id) as session:
+        existing = await session.execute(
+            select(Document.id).where(Document.sha256 == sha)
+        )
+        if existing.first():
+            raise DuplicateDocumentError(tender_id)
+
+        next_version = (
+            await session.execute(
+                select(sql_func.coalesce(sql_func.max(Document.version), 0) + 1)
+                .where(Document.tender_id == tender_id)
+            )
+        ).scalar_one()
+
+        object_key = f"{org_id}/{sha}.pdf"
+        await asyncio.to_thread(storage.put_pdf, object_key, data)
+
+        document = Document(
+            org_id=org_id, tender_id=tender_id, filename=filename, sha256=sha,
+            size_bytes=len(data), bucket=storage.bucket, object_key=object_key,
+            version=next_version, kind=kind,
+        )
+        session.add(document)
+        await session.flush()
+
+        run = ParseRun(org_id=org_id, document_id=document.id, status="pending",
+                       trace_id=tender_id.hex)
+        session.add(run)
+        await session.flush()
+        return document.id, run.id
+
+
 async def create_upload_records(
     org_id: uuid.UUID,
     filename: str,

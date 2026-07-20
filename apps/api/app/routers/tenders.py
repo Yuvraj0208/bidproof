@@ -160,7 +160,10 @@ async def get_tender(
 
         document = (
             await session.execute(
-                select(Document).where(Document.tender_id == tender_id)
+                select(Document)
+                .where(Document.tender_id == tender_id)
+                .order_by(Document.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
 
@@ -222,7 +225,10 @@ async def list_elements(
     async with org_scoped_session(org_id) as session:
         document = (
             await session.execute(
-                select(Document).where(Document.tender_id == tender_id)
+                select(Document)
+                .where(Document.tender_id == tender_id)
+                .order_by(Document.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         if document is None:

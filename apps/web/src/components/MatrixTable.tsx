@@ -14,6 +14,7 @@ export interface VerdictRow {
   confidence: number;
   band: "green" | "yellow" | "red";
   arithmetic: boolean;
+  document_id: string;
   page_no: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
 }
@@ -55,7 +56,13 @@ export function MatrixTable({
           <tr
             key={row.id}
             data-testid="matrix-row"
-            onClick={() => onProof({ page_no: row.page_no, bbox: row.bbox })}
+            onClick={() =>
+              onProof({
+                page_no: row.page_no,
+                bbox: row.bbox,
+                document_id: row.document_id,
+              })
+            }
             className="cursor-pointer border-b align-top hover:bg-amber-50"
           >
             <td className="px-3 py-2">

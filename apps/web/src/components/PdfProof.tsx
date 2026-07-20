@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
-import { fetchDocumentBlob } from "../api";
+import { fetchDocumentBlob, fetchDocumentBlobById } from "../api";
 import { highlightRect, type BBox } from "../proofGeometry";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -21,13 +21,16 @@ const SCALE = 1.35;
 export interface Highlight {
   page_no: number;
   bbox: BBox;
+  document_id?: string | null;
 }
 
 export function PdfProof({
   tenderId,
+  documentId,
   highlight,
 }: {
   tenderId: string;
+  documentId?: string | null;
   highlight: Highlight | null;
 }) {
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -40,7 +43,11 @@ export function PdfProof({
     let loaded: PDFDocumentProxy | null = null;
     (async () => {
       try {
-        const data = await fetchDocumentBlob(tenderId);
+        // A rule's proof lives in the document it was extracted from; after
+        // a corrigendum that may not be the tender's original (US-07).
+        const data = documentId
+          ? await fetchDocumentBlobById(documentId)
+          : await fetchDocumentBlob(tenderId);
         const pdf = await pdfjsLib.getDocument({ data }).promise;
         loaded = pdf;
         if (cancelled) {
@@ -59,7 +66,7 @@ export function PdfProof({
       setDoc(null);
       setPageCount(0);
     };
-  }, [tenderId]);
+  }, [tenderId, documentId]);
 
   useEffect(() => {
     if (!doc) return;

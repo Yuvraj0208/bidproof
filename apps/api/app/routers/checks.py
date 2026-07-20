@@ -39,6 +39,7 @@ class VerdictOut(BaseModel):
     cited_fact_id: uuid.UUID | None
     cited_product_id: uuid.UUID | None
     el_id: uuid.UUID
+    document_id: uuid.UUID
     page_no: int
     bbox: BBoxOut
 
@@ -85,7 +86,7 @@ async def list_verdicts(
                 verdict=v.verdict, reason=v.reason, confidence=v.confidence,
                 band=v.band, arithmetic=v.arithmetic,
                 cited_fact_id=v.cited_fact_id, cited_product_id=v.cited_product_id,
-                el_id=e.el_id, page_no=e.page_no,
+                el_id=e.el_id, document_id=e.document_id, page_no=e.page_no,
                 bbox=BBoxOut(x0=e.x0, y0=e.y0, x1=e.x1, y1=e.y1),
             )
             for v, r, e in rows

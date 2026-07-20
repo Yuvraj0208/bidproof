@@ -57,12 +57,26 @@ async def compute_decision(
         ]
         values = {r.key: r.value_text for _, r in verdict_rows}
 
+        prior = (
+            await session.execute(
+                select(Decision).where(Decision.tender_id == tender_id)
+            )
+        ).scalar_one_or_none()
+
+        if tender_value_inr is None and prior is not None and prior.tender_value_inr is not None:
+            # Reuse the value the tender was already valued at — stable across
+            # corrigenda (a corrigendum carries no contract value).
+            tender_value_inr = float(prior.tender_value_inr)
+
         if tender_value_inr is None:
-            # Fall back to the largest amount in the document — regex only,
-            # surfaced as such; the human corrects it in the Decision Room.
+            # Fall back to the largest amount in the ORIGINAL tender document
+            # — regex only; the human corrects it in the Decision Room.
             document = (
                 await session.execute(
-                    select(Document.id).where(Document.tender_id == tender_id)
+                    select(Document.id)
+                    .where(Document.tender_id == tender_id)
+                    .order_by(Document.version.asc())
+                    .limit(1)
                 )
             ).scalar_one_or_none()
             if document:
@@ -96,6 +110,7 @@ async def compute_decision(
             session.add(existing)
         existing.recommendation = outcome.recommendation
         existing.ev_inr = outcome.ev_inr
+        existing.tender_value_inr = tender_value_inr
         existing.terms = outcome.terms
         existing.gate_failed = outcome.gate_failed
         existing.confidence = outcome.confidence

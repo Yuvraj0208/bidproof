@@ -33,6 +33,7 @@ class RuleOut(BaseModel):
     requirement_text: str
     value: str | None
     el_id: uuid.UUID
+    document_id: uuid.UUID
     page_no: int
     bbox: BBoxOut
     source: str
@@ -75,6 +76,7 @@ async def list_rules(
                 requirement_text=rule.requirement_text,
                 value=rule.value_text,
                 el_id=rule.el_id,
+                document_id=element.document_id,
                 page_no=element.page_no,
                 bbox=BBoxOut(x0=element.x0, y0=element.y0, x1=element.x1, y1=element.y1),
                 source=rule.source,
@@ -94,11 +96,32 @@ async def get_document(
     async with org_scoped_session(org_id) as session:
         document = (
             await session.execute(
-                select(Document).where(Document.tender_id == tender_id)
+                select(Document)
+                .where(Document.tender_id == tender_id)
+                .order_by(Document.version.desc())
+                .limit(1)
             )
         ).scalar_one_or_none()
         if document is None:
             raise HTTPException(404, "tender has no document")
+        object_key = document.object_key
+
+    storage = ObjectStorage(get_settings())
+    data = await asyncio.to_thread(storage.get_pdf, object_key)
+    return Response(content=data, media_type="application/pdf")
+
+
+@router.get("/documents/{document_id}/file")
+async def get_document_file(
+    document_id: uuid.UUID, org_id: uuid.UUID = Depends(require_org_id)
+) -> Response:
+    """Per-document PDF stream. After an amendment a tender has several
+    documents; a rule's proof lives in the document it was extracted from,
+    so click-to-proof loads that document by id (US-07)."""
+    async with org_scoped_session(org_id) as session:
+        document = await session.get(Document, document_id)
+        if document is None:
+            raise HTTPException(404, "document not found")
         object_key = document.object_key
 
     storage = ObjectStorage(get_settings())
