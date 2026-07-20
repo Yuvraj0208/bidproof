@@ -170,7 +170,7 @@ async def generate_proposal(
             kept, dropped = enforce_source_tags(
                 draft, valid_tags, allowed_context=(tender_title,)
             )
-        claims = check_text(kept, facts_by_tag)
+        claims = check_text(kept, facts_by_tag, ignore_context=(tender_title,))
         totals["claims"] += len(claims)
         for claim in claims:
             totals[claim.status] = totals.get(claim.status, 0) + 1

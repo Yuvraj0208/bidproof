@@ -43,6 +43,13 @@ def test_style_sentences_are_not_claims():
     assert claims == []
 
 
+def test_tender_reference_number_is_not_a_company_claim():
+    # The tender's own reference number is the buyer's words, not a claim.
+    text = "We submit our proposal for Tender 42/2026."
+    assert check_text(text, FACTS) != []                      # naively a claim
+    assert check_text(text, FACTS, ignore_context=("Tender 42/2026",)) == []
+
+
 def test_verified_percentage_and_no_claims_is_none():
     # The writer's convention: one claim per line, tag after the period.
     claims = check_text(

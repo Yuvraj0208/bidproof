@@ -33,6 +33,13 @@ async def test_full_draft_after_go_all_claims_verified(owner_conn):
 
     async with client_for(app, org_id) as client:
         tender_id = await go_tender(client)
+        # A title with digits (the tender's own reference) must not read as an
+        # unverifiable company claim.
+        await owner_conn.execute(
+            text("UPDATE tenders SET title = 'Tender 42/2026' WHERE id = :t"),
+            {"t": __import__("uuid").UUID(tender_id)},
+        )
+        await owner_conn.commit()
         summary = (await client.post(f"/tenders/{tender_id}/proposal")).json()
         proposal = (await client.get(f"/tenders/{tender_id}/proposal")).json()
 

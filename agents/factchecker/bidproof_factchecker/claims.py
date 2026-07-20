@@ -45,11 +45,18 @@ def _sentences(text: str) -> list[str]:
     return out
 
 
-def check_text(text: str, facts_by_tag: dict[str, str]) -> list[Claim]:
+def check_text(
+    text: str, facts_by_tag: dict[str, str], ignore_context: tuple[str, ...] = ()
+) -> list[Claim]:
+    """`ignore_context` holds quoted tender context (e.g. the tender's own
+    title/reference number): its digits are the buyer's words, not a company
+    claim, so a sentence that only restates them is not a claim."""
     claims: list[Claim] = []
     for sentence in _sentences(text):
         tags = TAG_RE.findall(sentence)
         stripped = TAG_RE.sub("", sentence)
+        for context in ignore_context:
+            stripped = stripped.replace(context, "")
         numbers = _number_tokens(stripped)
         if not tags and not numbers:
             continue  # style, not a claim
