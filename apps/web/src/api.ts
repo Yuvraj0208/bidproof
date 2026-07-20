@@ -93,6 +93,41 @@ export const generateQuestions = (tenderId: string) =>
     method: "POST",
   });
 
+export interface ProposalClaim {
+  text: string;
+  source_tag: string | null;
+  status: "verified" | "cannot_verify" | "contradicted";
+}
+
+export interface ProposalSection {
+  id: string;
+  section_tag: string;
+  position: number;
+  content: string;
+  claims: ProposalClaim[];
+  verified_pct: number | null;
+  dropped_untagged: number;
+  approved: boolean;
+}
+
+export interface Proposal {
+  id: string;
+  tender_id: string;
+  status: string;
+  format_source: string;
+  duration_ms: number | null;
+  sections: ProposalSection[];
+}
+
+export const fetchProposal = (tenderId: string) =>
+  request<Proposal>(`/tenders/${tenderId}/proposal`);
+
+export const generateProposal = (tenderId: string) =>
+  request<{ sections: number; duration_ms: number }>(
+    `/tenders/${tenderId}/proposal`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+  );
+
 export async function amendTender(tenderId: string, file: File): Promise<Amendment> {
   const form = new FormData();
   form.append("file", file);

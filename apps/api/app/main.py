@@ -14,6 +14,7 @@ from app.routers import (
     decision,
     discovery,
     health,
+    proposal,
     questions,
     radar,
     rules,
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(console.router)
     app.include_router(amendment.router)
     app.include_router(questions.router)
+    app.include_router(proposal.router)
     return app
 
 

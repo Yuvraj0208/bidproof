@@ -9,9 +9,11 @@ import {
   fetchAgentRuns,
   fetchAmendments,
   fetchBrief,
+  fetchProposal,
   fetchQuestions,
   fetchRules,
   fetchVerdicts,
+  generateProposal,
   generateQuestions,
   overrideDecision,
   replayTender,
@@ -19,11 +21,13 @@ import {
   runExtraction,
   signOffDecision,
   type Amendment,
+  type Proposal,
   type QueryLetter,
   type Rule,
   type Verdict,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
+import { ProposalPanel } from "./components/ProposalPanel";
 import { QuestionsPanel } from "./components/QuestionsPanel";
 import {
   AgentConsole,
@@ -47,7 +51,8 @@ type Tab =
   | "decision"
   | "console"
   | "amendments"
-  | "questions";
+  | "questions"
+  | "proposal";
 
 export function Workspace({
   tenderId,
@@ -70,6 +75,8 @@ export function Workspace({
   const [amending, setAmending] = useState(false);
   const [letters, setLetters] = useState<QueryLetter[]>([]);
   const [drafting, setDrafting] = useState(false);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [writing, setWriting] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,6 +98,17 @@ export function Workspace({
       .catch(() => setAgentRuns([]));
     fetchAmendments(tenderId).then(setAmendments).catch(() => setAmendments([]));
     fetchQuestions(tenderId).then(setLetters).catch(() => setLetters([]));
+    fetchProposal(tenderId).then(setProposal).catch(() => setProposal(null));
+  };
+
+  const handleDraftProposal = async () => {
+    setWriting(true);
+    try {
+      await generateProposal(tenderId);
+      load();
+    } finally {
+      setWriting(false);
+    }
   };
 
   const handleDraftQuestions = async () => {
@@ -171,6 +189,7 @@ export function Workspace({
               "console",
               "amendments",
               "questions",
+              "proposal",
             ] as Tab[]
           ).map((t) => (
               <button
@@ -192,7 +211,9 @@ export function Workspace({
                         ? `Console (${agentRuns.length})`
                         : t === "amendments"
                           ? `Amendments${amendments.length ? ` (${amendments.length})` : ""}`
-                          : `Questions${letters.length ? ` (${letters.length})` : ""}`}
+                          : t === "questions"
+                            ? `Questions${letters.length ? ` (${letters.length})` : ""}`
+                            : "Proposal"}
               </button>
           ))}
         </nav>
@@ -215,7 +236,15 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "questions" ? (
+      {tab === "proposal" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+          <ProposalPanel
+            proposal={proposal}
+            onGenerate={handleDraftProposal}
+            busy={writing}
+          />
+        </div>
+      ) : tab === "questions" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
           <QuestionsPanel
             letters={letters}

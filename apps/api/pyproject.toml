@@ -20,6 +20,9 @@ dependencies = [
     "bidproof-riskscorer",
     "bidproof-decider",
     "bidproof-questionwriter",
+    "bidproof-librarian",
+    "bidproof-proposalwriter",
+    "bidproof-factchecker",
     "minio>=7.2",
     "langfuse>=2.50",
     "python-multipart>=0.0.9",
@@ -43,6 +46,9 @@ bidproof-matcher = { path = "../../agents/matcher", editable = true }
 bidproof-riskscorer = { path = "../../agents/riskscorer", editable = true }
 bidproof-decider = { path = "../../agents/decider", editable = true }
 bidproof-questionwriter = { path = "../../agents/questionwriter", editable = true }
+bidproof-librarian = { path = "../../agents/librarian", editable = true }
+bidproof-proposalwriter = { path = "../../agents/proposalwriter", editable = true }
+bidproof-factchecker = { path = "../../agents/factchecker", editable = true }
 
 [dependency-groups]
 dev = [

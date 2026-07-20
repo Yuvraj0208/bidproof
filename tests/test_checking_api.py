@@ -17,10 +17,15 @@ def make_app(gateway):
     from app.main import create_app
     from app.services.checking import get_checking_gateway
     from app.services.extraction import get_extraction_gateway
+    from app.services.proposal import get_writer_gateway
+    from app.services.questions import get_question_gateway
 
     app = create_app()
-    app.dependency_overrides[get_extraction_gateway] = lambda: gateway
-    app.dependency_overrides[get_checking_gateway] = lambda: gateway
+    # Every model-using dependency resolves to the test's fake gateway, so no
+    # test ever reaches a real model endpoint.
+    for provider in (get_extraction_gateway, get_checking_gateway,
+                     get_question_gateway, get_writer_gateway):
+        app.dependency_overrides[provider] = lambda: gateway
     return app
 
 

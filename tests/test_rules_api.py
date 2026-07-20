@@ -17,7 +17,14 @@ pytestmark = pytest.mark.integration
 
 
 class FakeGateway:
-    """Speaks the gateway's interface; scripted per test. No network."""
+    """Speaks the gateway's interface; scripted per test. No network.
+
+    The scripted `responses` feed the extraction/judge roles (small/mid). For
+    the writer role (strong) the default is an EMPTY body — meaning 'no
+    polish', so the ProposalWriter's grounded deterministic draft stands.
+    Tests that want to exercise a misbehaving writer subclass and override
+    `complete` for the strong role.
+    """
 
     def __init__(self, responses: list[str]):
         self.responses = list(responses)
@@ -25,6 +32,8 @@ class FakeGateway:
 
     async def complete(self, role, messages, **params):
         self.calls.append({"role": role, "messages": messages})
+        if role == "strong":
+            return {"choices": [{"message": {"content": ""}}]}
         content = self.responses.pop(0) if self.responses else '{"rules": []}'
         return {"choices": [{"message": {"content": content}}]}
 

@@ -187,8 +187,11 @@ dependencies = [
     { name = "bidproof-adapters" },
     { name = "bidproof-decider" },
     { name = "bidproof-extractor" },
+    { name = "bidproof-factchecker" },
+    { name = "bidproof-librarian" },
     { name = "bidproof-matcher" },
     { name = "bidproof-parser" },
+    { name = "bidproof-proposalwriter" },
     { name = "bidproof-questionwriter" },
     { name = "bidproof-riskscorer" },
     { name = "bidproof-scout" },
@@ -229,9 +232,12 @@ requires-dist = [
     { name = "bidproof-adapters", extras = ["gem"], marker = "extra == 'scrapers'", editable = "../../adapters" },
     { name = "bidproof-decider", editable = "../../agents/decider" },
     { name = "bidproof-extractor", editable = "../../agents/extractor" },
+    { name = "bidproof-factchecker", editable = "../../agents/factchecker" },
+    { name = "bidproof-librarian", editable = "../../agents/librarian" },
     { name = "bidproof-matcher", editable = "../../agents/matcher" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
     { name = "bidproof-parser", extras = ["ml"], marker = "extra == 'ml'", editable = "../../agents/parser" },
+    { name = "bidproof-proposalwriter", editable = "../../agents/proposalwriter" },
     { name = "bidproof-questionwriter", editable = "../../agents/questionwriter" },
     { name = "bidproof-riskscorer", editable = "../../agents/riskscorer" },
     { name = "bidproof-scout", editable = "../../agents/scout" },
@@ -274,6 +280,16 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 
 [[package]]
+name = "bidproof-factchecker"
+version = "0.1.0"
+source = { editable = "../../agents/factchecker" }
+
+[[package]]
+name = "bidproof-librarian"
+version = "0.1.0"
+source = { editable = "../../agents/librarian" }
+
+[[package]]
 name = "bidproof-matcher"
 version = "0.1.0"
 source = { editable = "../../agents/matcher" }
@@ -303,6 +319,11 @@ requires-dist = [
     { name = "pypdfium2", specifier = ">=4.30" },
 ]
 provides-extras = ["ml"]
+
+[[package]]
+name = "bidproof-proposalwriter"
+version = "0.1.0"
+source = { editable = "../../agents/proposalwriter" }
 
 [[package]]
 name = "bidproof-questionwriter"
