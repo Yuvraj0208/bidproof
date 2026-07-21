@@ -24,6 +24,7 @@ dependencies = [
     "bidproof-proposalwriter",
     "bidproof-factchecker",
     "bidproof-formfiller",
+    "bidproof-guard",
     "minio>=7.2",
     "langfuse>=2.50",
     "python-multipart>=0.0.9",
@@ -52,6 +53,7 @@ bidproof-librarian = { path = "../../agents/librarian", editable = true }
 bidproof-proposalwriter = { path = "../../agents/proposalwriter", editable = true }
 bidproof-factchecker = { path = "../../agents/factchecker", editable = true }
 bidproof-formfiller = { path = "../../agents/formfiller", editable = true }
+bidproof-guard = { path = "../../agents/guard", editable = true }
 
 [dependency-groups]
 dev = [

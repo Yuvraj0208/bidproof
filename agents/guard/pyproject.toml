@@ -1,0 +1,13 @@
+[project]
+name = "bidproof-guard"
+version = "0.1.0"
+description = "Guard agent: screen inputs and outputs for injection / jailbreak text"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bidproof_guard"]

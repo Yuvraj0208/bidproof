@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.routers import (
     amendment,
     capability,
+    chat,
     checks,
     console,
     declarations,
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(proposal.router)
     app.include_router(declarations.router)
     app.include_router(submission.router)
+    app.include_router(chat.router)
     return app
 
 

@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import {
   amendTender,
   approveSection,
+  askChat,
   attachChecklistFile,
   computeDecision,
   downloadMatrix,
   fetchAgentRuns,
   fetchAmendments,
+  fetchChatHistory,
   fetchChecklist,
   generateChecklist,
   tickChecklistItem,
@@ -28,6 +30,7 @@ import {
   runExtraction,
   signOffDecision,
   type Amendment,
+  type ChatTurn,
   type Checklist,
   type ExportBlocker,
   type Proposal,
@@ -36,6 +39,7 @@ import {
   type Verdict,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
+import { ChatPanel } from "./components/ChatPanel";
 import { ChecklistPanel } from "./components/ChecklistPanel";
 import { ExportBar } from "./components/ExportBar";
 import { ProposalPanel } from "./components/ProposalPanel";
@@ -64,7 +68,8 @@ type Tab =
   | "amendments"
   | "questions"
   | "proposal"
-  | "checklist";
+  | "checklist"
+  | "chat";
 
 export function Workspace({
   tenderId,
@@ -93,6 +98,8 @@ export function Workspace({
   const [exporting, setExporting] = useState(false);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [checklistName, setChecklistName] = useState("");
+  const [chatTurns, setChatTurns] = useState<ChatTurn[]>([]);
+  const [asking, setAsking] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -119,6 +126,17 @@ export function Workspace({
       .then((p) => setBlockers(p.blockers))
       .catch(() => setBlockers(null));
     fetchChecklist(tenderId).then(setChecklist).catch(() => setChecklist(null));
+    fetchChatHistory(tenderId).then(setChatTurns).catch(() => setChatTurns([]));
+  };
+
+  const handleAsk = async (question: string) => {
+    setAsking(true);
+    try {
+      await askChat(tenderId, question);
+    } finally {
+      setChatTurns(await fetchChatHistory(tenderId));
+      setAsking(false);
+    }
   };
 
   const handleGenerateChecklist = async () => {
@@ -244,6 +262,7 @@ export function Workspace({
               "questions",
               "proposal",
               "checklist",
+              "chat",
             ] as Tab[]
           ).map((t) => (
               <button
@@ -269,7 +288,9 @@ export function Workspace({
                             ? `Questions${letters.length ? ` (${letters.length})` : ""}`
                             : t === "proposal"
                               ? "Proposal"
-                              : "Checklist"}
+                              : t === "checklist"
+                                ? "Checklist"
+                                : "Ask BidProof"}
               </button>
           ))}
         </nav>
@@ -292,7 +313,11 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "checklist" ? (
+      {tab === "chat" ? (
+        <div className="min-h-0 flex-1 overflow-hidden bg-slate-50">
+          <ChatPanel turns={chatTurns} onAsk={handleAsk} busy={asking} />
+        </div>
+      ) : tab === "checklist" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
           <ChecklistPanel
             checklist={checklist}

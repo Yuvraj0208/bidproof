@@ -189,6 +189,7 @@ dependencies = [
     { name = "bidproof-extractor" },
     { name = "bidproof-factchecker" },
     { name = "bidproof-formfiller" },
+    { name = "bidproof-guard" },
     { name = "bidproof-librarian" },
     { name = "bidproof-matcher" },
     { name = "bidproof-parser" },
@@ -236,6 +237,7 @@ requires-dist = [
     { name = "bidproof-extractor", editable = "../../agents/extractor" },
     { name = "bidproof-factchecker", editable = "../../agents/factchecker" },
     { name = "bidproof-formfiller", editable = "../../agents/formfiller" },
+    { name = "bidproof-guard", editable = "../../agents/guard" },
     { name = "bidproof-librarian", editable = "../../agents/librarian" },
     { name = "bidproof-matcher", editable = "../../agents/matcher" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
@@ -292,6 +294,11 @@ source = { editable = "../../agents/factchecker" }
 name = "bidproof-formfiller"
 version = "0.1.0"
 source = { editable = "../../agents/formfiller" }
+
+[[package]]
+name = "bidproof-guard"
+version = "0.1.0"
+source = { editable = "../../agents/guard" }
 
 [[package]]
 name = "bidproof-librarian"

@@ -157,6 +157,34 @@ export const fetchReadiness = (tenderId: string) =>
     `/tenders/${tenderId}/proposal/readiness`,
   );
 
+export interface ChatCitation {
+  el_id: string;
+  page_no: number;
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+  citations: ChatCitation[];
+  refused: boolean;
+  reason: string | null;
+}
+
+export const fetchChatHistory = (tenderId: string) =>
+  request<ChatTurn[]>(`/tenders/${tenderId}/chat`);
+
+export const askChat = (tenderId: string, question: string) =>
+  request<{
+    answer: string;
+    citations: ChatCitation[];
+    refused: boolean;
+    reason: string | null;
+  }>(`/tenders/${tenderId}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+
 export interface ChecklistItem {
   id: string;
   name: string;
