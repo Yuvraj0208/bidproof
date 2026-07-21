@@ -629,12 +629,16 @@ class ProposalSection(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     claims: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     verified_pct: Mapped[float | None] = mapped_column(Float)
+    requirements_covered_pct: Mapped[float | None] = mapped_column(Float)
+    style_match_pct: Mapped[float | None] = mapped_column(Float)
     dropped_untagged: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
     approved: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    approved_by: Mapped[str | None] = mapped_column(String)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

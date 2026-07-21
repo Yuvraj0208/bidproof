@@ -7,6 +7,8 @@ from bidproof_proposalwriter.writer import (
     deterministic_section,
     enforce_source_tags,
     is_factual,
+    requirements_covered_pct,
+    style_match_pct,
 )
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "deterministic_section",
     "enforce_source_tags",
     "is_factual",
+    "requirements_covered_pct",
+    "style_match_pct",
 ]

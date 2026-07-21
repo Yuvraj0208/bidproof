@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import {
   amendTender,
+  approveSection,
   computeDecision,
   downloadMatrix,
   fetchAgentRuns,
@@ -108,6 +109,14 @@ export function Workspace({
       load();
     } finally {
       setWriting(false);
+    }
+  };
+
+  const handleApproveSection = async (sectionId: string, name: string) => {
+    try {
+      await approveSection(tenderId, sectionId, name);
+    } finally {
+      load();
     }
   };
 
@@ -241,6 +250,7 @@ export function Workspace({
           <ProposalPanel
             proposal={proposal}
             onGenerate={handleDraftProposal}
+            onApprove={handleApproveSection}
             busy={writing}
           />
         </div>

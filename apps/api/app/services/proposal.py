@@ -7,6 +7,7 @@ import logging
 import time
 import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 
@@ -18,6 +19,8 @@ from bidproof_proposalwriter import (
     build_fact_context,
     deterministic_section,
     enforce_source_tags,
+    requirements_covered_pct,
+    style_match_pct,
 )
 
 from app.core.db import org_scoped_session
@@ -179,6 +182,8 @@ async def generate_proposal(
             "section_tag": section_tag, "position": position, "content": kept,
             "claims": [asdict(c) for c in claims],
             "verified_pct": verified_percentage(claims),
+            "requirements_covered_pct": requirements_covered_pct(kept, requirements),
+            "style_match_pct": style_match_pct(kept, [b.text for b in style_blocks]),
             "dropped_untagged": dropped,
         })
 
@@ -226,4 +231,141 @@ async def generate_proposal(
         "duration_ms": duration_ms,
         "format_source": format_source,
         **totals,
+    }
+
+
+# --- Section-by-section approval (US-11) ------------------------------------
+
+OPEN_FLAG_STATUSES = {"contradicted", "cannot_verify"}
+
+
+def open_flags(claims: list[dict]) -> list[str]:
+    """A section cannot be approved while any claim is contradicted or
+    unverifiable — those are the flags a human must resolve first."""
+    return [c["status"] for c in claims if c["status"] in OPEN_FLAG_STATUSES]
+
+
+async def _load_writer_context(org_id: uuid.UUID, tender_id: uuid.UUID):
+    async with org_scoped_session(org_id) as session:
+        tender = await session.get(Tender, tender_id)
+        facts = [
+            {
+                "id": f.id, "fact_type": f.fact_type, "value_text": f.value_text,
+                "value_number": float(f.value_number) if f.value_number is not None else None,
+                "fiscal_year": f.fiscal_year, "legal_entity": f.legal_entity,
+                "valid_until": str(f.valid_until) if f.valid_until else None,
+            }
+            for f in (await session.execute(select(CompanyFact))).scalars()
+        ]
+        products = [
+            {
+                "id": p.id, "product_code": p.product_code,
+                "product_name": p.product_name,
+                "standards": list(p.standards or []),
+                "lead_time_days": p.lead_time_days,
+                "capacity_per_month": p.capacity_per_month,
+            }
+            for p in (await session.execute(select(CatalogueProduct))).scalars()
+        ]
+        requirements = [
+            r.requirement_text
+            for r in (
+                await session.execute(select(Rule).where(Rule.tender_id == tender_id))
+            ).scalars()
+        ]
+    tagged = build_fact_context(facts, products)
+    facts_by_tag = {t.tag: t.text for t in tagged}
+    valid_tags = {t.tag for t in tagged}
+    return tender, tagged, facts_by_tag, valid_tags, requirements
+
+
+async def edit_section(
+    org_id: uuid.UUID, tender_id: uuid.UUID, section_id: uuid.UUID, content: str
+) -> dict | None:
+    """A human edits a section. The edit is re-grounded (untagged facts
+    dropped) and re-fact-checked, so approving a section is only possible once
+    it is genuinely clean — resolving a flag is real, not a checkbox."""
+    tender, _tagged, facts_by_tag, valid_tags, _reqs = await _load_writer_context(
+        org_id, tender_id
+    )
+    kept, dropped = enforce_source_tags(
+        content, valid_tags, allowed_context=(tender.title,) if tender else ()
+    )
+    claims = check_text(kept, facts_by_tag,
+                        ignore_context=(tender.title,) if tender else ())
+
+    async with org_scoped_session(org_id) as session:
+        section = await session.get(ProposalSection, section_id)
+        if section is None or section.org_id != org_id:
+            return None
+        section.content = kept
+        section.claims = [asdict(c) for c in claims]
+        section.verified_pct = verified_percentage(claims)
+        section.dropped_untagged = dropped
+        # An edited section is no longer approved — it must be re-approved.
+        section.approved = False
+        section.approved_by = None
+        section.approved_at = None
+        await session.flush()
+        return _section_dict(section)
+
+
+async def approve_section(
+    org_id: uuid.UUID, tender_id: uuid.UUID, section_id: uuid.UUID, name: str
+) -> tuple[dict | None, str | None]:
+    """Approve ONE section (Checkpoint 5 — never automatic, never bulk).
+    Returns (section, error). Refuses while any flag is open."""
+    async with org_scoped_session(org_id) as session:
+        section = await session.get(ProposalSection, section_id)
+        if section is None or section.org_id != org_id:
+            return None, None
+        flags = open_flags(section.claims or [])
+        if flags:
+            return None, (
+                f"section has {len(flags)} unresolved flag(s) "
+                f"({', '.join(sorted(set(flags)))}) — resolve them before approving"
+            )
+        section.approved = True
+        section.approved_by = name
+        section.approved_at = datetime.now(timezone.utc)
+        await session.flush()
+        return _section_dict(section), None
+
+
+async def readiness(org_id: uuid.UUID, tender_id: uuid.UUID) -> dict | None:
+    async with org_scoped_session(org_id) as session:
+        proposal = (
+            await session.execute(
+                select(Proposal).where(Proposal.tender_id == tender_id)
+            )
+        ).scalar_one_or_none()
+        if proposal is None:
+            return None
+        sections = (
+            await session.execute(
+                select(ProposalSection).where(
+                    ProposalSection.proposal_id == proposal.id
+                )
+            )
+        ).scalars().all()
+    approved = [s for s in sections if s.approved]
+    open_flag_sections = [s for s in sections if open_flags(s.claims or [])]
+    return {
+        "total": len(sections),
+        "approved": len(approved),
+        "sections_with_open_flags": len(open_flag_sections),
+        "ready": len(sections) > 0 and len(approved) == len(sections),
+    }
+
+
+def _section_dict(section: ProposalSection) -> dict:
+    return {
+        "id": str(section.id), "section_tag": section.section_tag,
+        "content": section.content, "claims": section.claims,
+        "verified_pct": section.verified_pct,
+        "requirements_covered_pct": section.requirements_covered_pct,
+        "style_match_pct": section.style_match_pct,
+        "dropped_untagged": section.dropped_untagged,
+        "approved": section.approved, "approved_by": section.approved_by,
+        "open_flags": open_flags(section.claims or []),
     }

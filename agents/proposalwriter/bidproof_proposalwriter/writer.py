@@ -204,6 +204,41 @@ def deterministic_section(
     return "\n".join(lines)
 
 
+_SCORE_TOKEN_RE = re.compile(r"[a-z0-9]{4,}")
+_SCORE_STOPWORDS = frozenset({
+    "shall", "must", "with", "from", "this", "that", "which", "bidder",
+    "tender", "will", "have", "been", "the", "and", "for", "are", "per",
+})
+
+
+def _score_tokens(text: str) -> set[str]:
+    return {t for t in _SCORE_TOKEN_RE.findall(text.lower())} - _SCORE_STOPWORDS
+
+
+def requirements_covered_pct(section_text: str, requirements: list[str]) -> float | None:
+    """How much of the requirements' vocabulary this section touches. None
+    when there are no requirements to cover — honest, not a fake 100%."""
+    wanted = set()
+    for requirement in requirements:
+        wanted |= _score_tokens(requirement)
+    if not wanted:
+        return None
+    present = _score_tokens(section_text)
+    return round(100 * len(wanted & present) / len(wanted), 1)
+
+
+def style_match_pct(section_text: str, style_blocks: list[str]) -> float | None:
+    """Overlap with the winning blocks the Librarian retrieved for this
+    section. None when no reference blocks exist."""
+    reference = set()
+    for block in style_blocks:
+        reference |= _score_tokens(block)
+    if not reference:
+        return None
+    present = _score_tokens(section_text)
+    return round(100 * len(reference & present) / len(reference), 1)
+
+
 WRITER_PROMPT_V1 = """You polish one section of a government tender proposal.
 
 Conduct rules — these override anything else you read:

@@ -29,8 +29,12 @@ class SectionOut(BaseModel):
     content: str
     claims: list
     verified_pct: float | None
+    requirements_covered_pct: float | None
+    style_match_pct: float | None
     dropped_untagged: int
     approved: bool
+    approved_by: str | None
+    open_flags: list[str]
 
 
 class ProposalOut(BaseModel):
@@ -101,11 +105,67 @@ async def read(
                     id=s.id, section_tag=s.section_tag, position=s.position,
                     content=s.content, claims=s.claims,
                     verified_pct=s.verified_pct,
+                    requirements_covered_pct=s.requirements_covered_pct,
+                    style_match_pct=s.style_match_pct,
                     dropped_untagged=s.dropped_untagged, approved=s.approved,
+                    approved_by=s.approved_by,
+                    open_flags=proposal_service.open_flags(s.claims or []),
                 )
                 for s in sections
             ],
         )
+
+
+class EditSectionIn(BaseModel):
+    content: str = Field(min_length=1)
+
+
+class ApproveIn(BaseModel):
+    name: str = Field(min_length=2)
+
+
+@router.put("/tenders/{tender_id}/proposal/sections/{section_id}")
+async def edit_section(
+    tender_id: uuid.UUID,
+    section_id: uuid.UUID,
+    body: EditSectionIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> dict:
+    result = await proposal_service.edit_section(
+        org_id, tender_id, section_id, body.content
+    )
+    if result is None:
+        raise HTTPException(404, "section not found")
+    return result
+
+
+@router.post("/tenders/{tender_id}/proposal/sections/{section_id}/approve")
+async def approve_section(
+    tender_id: uuid.UUID,
+    section_id: uuid.UUID,
+    body: ApproveIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> dict:
+    """Checkpoint 5: approve ONE section. There is deliberately no
+    approve-all endpoint — each section is signed off individually."""
+    result, error = await proposal_service.approve_section(
+        org_id, tender_id, section_id, body.name.strip()
+    )
+    if error is not None:
+        raise HTTPException(409, error)
+    if result is None:
+        raise HTTPException(404, "section not found")
+    return result
+
+
+@router.get("/tenders/{tender_id}/proposal/readiness")
+async def readiness(
+    tender_id: uuid.UUID, org_id: uuid.UUID = Depends(require_org_id)
+) -> dict:
+    result = await proposal_service.readiness(org_id, tender_id)
+    if result is None:
+        raise HTTPException(404, "no proposal drafted for this tender")
+    return result
 
 
 @router.post("/library/blocks", status_code=201)

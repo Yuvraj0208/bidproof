@@ -106,8 +106,12 @@ export interface ProposalSection {
   content: string;
   claims: ProposalClaim[];
   verified_pct: number | null;
+  requirements_covered_pct: number | null;
+  style_match_pct: number | null;
   dropped_untagged: number;
   approved: boolean;
+  approved_by: string | null;
+  open_flags: string[];
 }
 
 export interface Proposal {
@@ -126,6 +130,31 @@ export const generateProposal = (tenderId: string) =>
   request<{ sections: number; duration_ms: number }>(
     `/tenders/${tenderId}/proposal`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+  );
+
+export const approveSection = (tenderId: string, sectionId: string, name: string) =>
+  request<ProposalSection>(
+    `/tenders/${tenderId}/proposal/sections/${sectionId}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+
+export const editSection = (tenderId: string, sectionId: string, content: string) =>
+  request<ProposalSection>(
+    `/tenders/${tenderId}/proposal/sections/${sectionId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    },
+  );
+
+export const fetchReadiness = (tenderId: string) =>
+  request<{ total: number; approved: number; ready: boolean }>(
+    `/tenders/${tenderId}/proposal/readiness`,
   );
 
 export async function amendTender(tenderId: string, file: File): Promise<Amendment> {

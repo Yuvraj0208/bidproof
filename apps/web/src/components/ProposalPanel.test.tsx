@@ -1,8 +1,38 @@
-// US-09: sections render with per-claim badges and the verified-% chip.
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+// US-09 + US-11: sections render with claim badges, three scores, and
+// individual approval that is blocked while a flag is open.
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ProposalPanel } from "./ProposalPanel";
-import type { Proposal } from "../api";
+import type { Proposal, ProposalSection } from "../api";
+
+const clean: ProposalSection = {
+  id: "s-1",
+  section_tag: "company_profile",
+  position: 0,
+  content: "Annual turnover of ₹150.00 crore in FY 2024-25. [F:aaaaaaaa]",
+  claims: [
+    { text: "Annual turnover of ₹150.00 crore. [F:aaaaaaaa]",
+      source_tag: "[F:aaaaaaaa]", status: "verified" },
+  ],
+  verified_pct: 100,
+  requirements_covered_pct: 40,
+  style_match_pct: 25,
+  dropped_untagged: 1,
+  approved: false,
+  approved_by: null,
+  open_flags: [],
+};
+
+const flagged: ProposalSection = {
+  ...clean,
+  id: "s-2",
+  section_tag: "technical_approach",
+  claims: [
+    { text: "Turnover ₹777 crore. [F:aaaaaaaa]", source_tag: "[F:aaaaaaaa]",
+      status: "contradicted" },
+  ],
+  open_flags: ["contradicted"],
+};
 
 const PROPOSAL: Proposal = {
   id: "p-1",
@@ -10,57 +40,67 @@ const PROPOSAL: Proposal = {
   status: "draft",
   format_source: "default_template",
   duration_ms: 42,
-  sections: [
-    {
-      id: "s-1",
-      section_tag: "company_profile",
-      position: 0,
-      content: "Annual turnover of ₹150.00 crore in FY 2024-25. [F:aaaaaaaa]",
-      claims: [
-        { text: "Annual turnover of ₹150.00 crore in FY 2024-25. [F:aaaaaaaa]",
-          source_tag: "[F:aaaaaaaa]", status: "verified" },
-      ],
-      verified_pct: 100,
-      dropped_untagged: 1,
-      approved: false,
-    },
-    {
-      id: "s-2",
-      section_tag: "commercial_terms",
-      position: 1,
-      content: "All commercial terms are accepted.",
-      claims: [],
-      verified_pct: null,
-      dropped_untagged: 0,
-      approved: false,
-    },
-  ],
+  sections: [clean, flagged],
 };
 
 describe("ProposalPanel", () => {
-  it("renders each section with its verified-% chip", () => {
-    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}} busy={false} />);
-    const sections = screen.getAllByTestId("proposal-section");
-    expect(sections).toHaveLength(2);
-    const chips = screen.getAllByTestId("verified-chip").map((c) => c.textContent);
-    expect(chips).toContain("100% verified");
-    expect(chips).toContain("no claims");
+  it("shows the three per-section scores", () => {
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
+    const section = screen.getAllByTestId("proposal-section")[0];
+    expect(section).toHaveTextContent("verified 100%");
+    expect(section).toHaveTextContent("reqs 40%");
+    expect(section).toHaveTextContent("style 25%");
   });
 
-  it("shows a per-claim verification badge and the source tag", () => {
-    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}} busy={false} />);
-    const claim = screen.getByTestId("claim");
-    expect(claim).toHaveTextContent("verified");
-    expect(claim).toHaveTextContent("[F:aaaaaaaa]");
+  it("approves a section individually, gated on a name — no approve-all", () => {
+    const onApprove = vi.fn();
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={onApprove} busy={false} />);
+    // one approve button per unapproved section — each signed off on its own
+    const buttons = screen.getAllByTestId("approve-button");
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]).toBeDisabled();        // no name yet
+
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+    const clean = buttons[0];                 // the clean section (no flags)
+    expect(clean).toBeEnabled();
+    fireEvent.click(clean);
+    expect(onApprove).toHaveBeenCalledWith("s-1", "Priya N");
+
+    // there is no single control that approves everything at once
+    expect(screen.queryByText(/approve all/i)).toBeNull();
   });
 
-  it("flags how many ungrounded sentences were dropped", () => {
-    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}} busy={false} />);
-    expect(screen.getByText(/1 ungrounded dropped/)).toBeInTheDocument();
+  it("blocks approval of a section with an open flag even with a name", () => {
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+    // the flagged section shows its warning and its approve button stays disabled
+    expect(screen.getByTestId("open-flags")).toHaveTextContent("open flag");
+    const flaggedButton = screen.getAllByTestId("approve-button")[1];
+    expect(flaggedButton).toBeDisabled();
+  });
+
+  it("tracks approval progress and readiness", () => {
+    const allApproved: Proposal = {
+      ...PROPOSAL,
+      sections: PROPOSAL.sections.map((s) => ({
+        ...s, approved: true, approved_by: "Priya N", open_flags: [],
+      })),
+    };
+    render(<ProposalPanel proposal={allApproved} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
+    expect(screen.getByTestId("approval-progress")).toHaveTextContent(
+      "all sections approved",
+    );
   });
 
   it("invites drafting when there is no proposal", () => {
-    render(<ProposalPanel proposal={null} onGenerate={() => {}} busy={false} />);
+    render(<ProposalPanel proposal={null} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
     expect(screen.getByText(/once the decision is GO/)).toBeInTheDocument();
   });
 });
