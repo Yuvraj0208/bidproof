@@ -157,6 +157,51 @@ export const fetchReadiness = (tenderId: string) =>
     `/tenders/${tenderId}/proposal/readiness`,
   );
 
+export interface ChecklistItem {
+  id: string;
+  name: string;
+  required: boolean;
+  required_format: string;
+  signature_required: boolean;
+  uploaded_format: string | null;
+  signature_present: boolean | null;
+  checks_pass: boolean;
+  checks_reason: string | null;
+  ticked: boolean;
+  ticked_by: string | null;
+}
+
+export interface Checklist {
+  items: ChecklistItem[];
+  required_count: number;
+  ticked_count: number;
+  submit_ready: boolean;
+}
+
+export const fetchChecklist = (tenderId: string) =>
+  request<Checklist>(`/tenders/${tenderId}/checklist`);
+
+export const generateChecklist = (tenderId: string) =>
+  request<Checklist>(`/tenders/${tenderId}/checklist`, { method: "POST" });
+
+export const attachChecklistFile = (
+  itemId: string,
+  format: string,
+  signed: boolean,
+) =>
+  request<ChecklistItem>(`/checklist/items/${itemId}/attach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ format, signed }),
+  });
+
+export const tickChecklistItem = (itemId: string, name: string) =>
+  request<ChecklistItem>(`/checklist/items/${itemId}/tick`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
 export interface ExportBlocker {
   type: string;
   message: string;

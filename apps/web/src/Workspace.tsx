@@ -5,10 +5,14 @@ import { useEffect, useState } from "react";
 import {
   amendTender,
   approveSection,
+  attachChecklistFile,
   computeDecision,
   downloadMatrix,
   fetchAgentRuns,
   fetchAmendments,
+  fetchChecklist,
+  generateChecklist,
+  tickChecklistItem,
   fetchBrief,
   exportPreflight,
   exportProposal,
@@ -24,6 +28,7 @@ import {
   runExtraction,
   signOffDecision,
   type Amendment,
+  type Checklist,
   type ExportBlocker,
   type Proposal,
   type QueryLetter,
@@ -31,6 +36,7 @@ import {
   type Verdict,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
+import { ChecklistPanel } from "./components/ChecklistPanel";
 import { ExportBar } from "./components/ExportBar";
 import { ProposalPanel } from "./components/ProposalPanel";
 import { QuestionsPanel } from "./components/QuestionsPanel";
@@ -57,7 +63,8 @@ type Tab =
   | "console"
   | "amendments"
   | "questions"
-  | "proposal";
+  | "proposal"
+  | "checklist";
 
 export function Workspace({
   tenderId,
@@ -84,6 +91,8 @@ export function Workspace({
   const [writing, setWriting] = useState(false);
   const [blockers, setBlockers] = useState<ExportBlocker[] | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [checklistName, setChecklistName] = useState("");
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,6 +118,22 @@ export function Workspace({
     exportPreflight(tenderId)
       .then((p) => setBlockers(p.blockers))
       .catch(() => setBlockers(null));
+    fetchChecklist(tenderId).then(setChecklist).catch(() => setChecklist(null));
+  };
+
+  const handleGenerateChecklist = async () => {
+    setChecklist(await generateChecklist(tenderId));
+  };
+  const handleAttach = async (itemId: string, format: string, signed: boolean) => {
+    await attachChecklistFile(itemId, format, signed);
+    setChecklist(await fetchChecklist(tenderId));
+  };
+  const handleTick = async (itemId: string) => {
+    try {
+      await tickChecklistItem(itemId, checklistName.trim());
+    } finally {
+      setChecklist(await fetchChecklist(tenderId));
+    }
   };
 
   const handleExport = async (override?: { name: string; reason: string }) => {
@@ -218,6 +243,7 @@ export function Workspace({
               "amendments",
               "questions",
               "proposal",
+              "checklist",
             ] as Tab[]
           ).map((t) => (
               <button
@@ -241,7 +267,9 @@ export function Workspace({
                           ? `Amendments${amendments.length ? ` (${amendments.length})` : ""}`
                           : t === "questions"
                             ? `Questions${letters.length ? ` (${letters.length})` : ""}`
-                            : "Proposal"}
+                            : t === "proposal"
+                              ? "Proposal"
+                              : "Checklist"}
               </button>
           ))}
         </nav>
@@ -264,7 +292,18 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "proposal" ? (
+      {tab === "checklist" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+          <ChecklistPanel
+            checklist={checklist}
+            name={checklistName}
+            onName={setChecklistName}
+            onAttach={handleAttach}
+            onTick={handleTick}
+            onGenerate={handleGenerateChecklist}
+          />
+        </div>
+      ) : tab === "proposal" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
           {proposal && (
             <div className="mx-auto max-w-2xl px-6 pt-6">

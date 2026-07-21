@@ -19,6 +19,7 @@ from app.routers import (
     questions,
     radar,
     rules,
+    submission,
     tenders,
 )
 
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(questions.router)
     app.include_router(proposal.router)
     app.include_router(declarations.router)
+    app.include_router(submission.router)
     return app
 
 

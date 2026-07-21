@@ -644,6 +644,43 @@ class ProposalSection(Base):
     )
 
 
+class SubmissionItem(Base):
+    """One required document on the submission checklist (US-18). The system
+    records the uploaded format + signature; a human ticks each item."""
+
+    __tablename__ = "submission_items"
+    __table_args__ = (UniqueConstraint("tender_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    required_format: Mapped[str] = mapped_column(String, nullable=False)
+    signature_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    uploaded_format: Mapped[str | None] = mapped_column(String)
+    signature_present: Mapped[bool | None] = mapped_column(Boolean)
+    ticked: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ticked_by: Mapped[str | None] = mapped_column(String)
+    ticked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all
