@@ -1,0 +1,27 @@
+{
+  "tender": "gold-024",
+  "synthetic": true,
+  "note": "starter set - replace with hand-labelled real tenders, same format",
+  "rules": [
+    {
+      "family": "commercial",
+      "key": "emd_amount",
+      "value": "Rs 5,00,000"
+    },
+    {
+      "family": "eligibility",
+      "key": "min_turnover",
+      "value": "Rs 5 crore"
+    },
+    {
+      "family": "commercial",
+      "key": "delivery_days",
+      "value": "45"
+    },
+    {
+      "family": "submission",
+      "key": "prebid_query_window_days",
+      "value": "10"
+    }
+  ]
+}

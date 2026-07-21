@@ -27,6 +27,7 @@ npm-debug.log*
 
 # --- data, stores, artifacts ---
 eval_report.json
+calibration_report.json
 *.log
 uploads/
 minio-data/
