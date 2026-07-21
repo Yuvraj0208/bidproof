@@ -157,6 +157,47 @@ export const fetchReadiness = (tenderId: string) =>
     `/tenders/${tenderId}/proposal/readiness`,
   );
 
+export interface ExportBlocker {
+  type: string;
+  message: string;
+  rule_key?: string;
+  section?: string;
+}
+
+export const exportPreflight = (tenderId: string) =>
+  request<{ can_export: boolean; blockers: ExportBlocker[] }>(
+    `/tenders/${tenderId}/proposal/export/preflight`,
+  );
+
+// Returns null and the blockers when export is refused; downloads the .docx
+// (and returns []) when it succeeds.
+export async function exportProposal(
+  tenderId: string,
+  override?: { name: string; reason: string },
+): Promise<ExportBlocker[]> {
+  const response = await fetch(`${API_BASE}/tenders/${tenderId}/proposal/export`, {
+    method: "POST",
+    headers: { "X-Org-Id": getOrgId(), "Content-Type": "application/json" },
+    body: JSON.stringify(
+      override
+        ? { override_name: override.name, override_reason: override.reason }
+        : {},
+    ),
+  });
+  if (response.status === 409) {
+    const body = await response.json();
+    return (body.detail?.blockers ?? []) as ExportBlocker[];
+  }
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `proposal-${tenderId}.docx`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  return [];
+}
+
 export async function amendTender(tenderId: string, file: File): Promise<Amendment> {
   const form = new FormData();
   form.append("file", file);

@@ -3,7 +3,7 @@ claim verification, and manage the block library (quarantine by default)."""
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -12,9 +12,14 @@ from bidproof_librarian import chop_proposal
 from app.core.db import org_scoped_session
 from app.core.tenancy import require_org_id
 from app.models import LibraryBlockRow, Proposal, ProposalSection
+from app.services import export as export_service
 from app.services import proposal as proposal_service
 
 router = APIRouter()
+
+DOCX_MEDIA = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
 
 
 class GenerateIn(BaseModel):
@@ -166,6 +171,55 @@ async def readiness(
     if result is None:
         raise HTTPException(404, "no proposal drafted for this tender")
     return result
+
+
+class ExportIn(BaseModel):
+    # An override unblocks a refused export; both are required and logged.
+    override_name: str | None = None
+    override_reason: str | None = None
+
+
+@router.get("/tenders/{tender_id}/proposal/export/preflight")
+async def export_preflight(
+    tender_id: uuid.UUID, org_id: uuid.UUID = Depends(require_org_id)
+) -> dict:
+    blockers = await export_service.export_blockers(org_id, tender_id)
+    return {"can_export": not blockers, "blockers": blockers}
+
+
+@router.post("/tenders/{tender_id}/proposal/export")
+async def export_proposal(
+    tender_id: uuid.UUID,
+    body: ExportIn | None = None,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> Response:
+    name = body.override_name if body else None
+    reason = body.override_reason if body else None
+    if (name and not reason) or (reason and not name):
+        raise HTTPException(400, "an override needs BOTH a name and a written reason")
+    if reason is not None and len(reason.strip()) < 5:
+        raise HTTPException(400, "the override reason must be a written explanation")
+
+    document, blockers = await export_service.export_proposal(
+        org_id, tender_id,
+        override_name=name.strip() if name else None,
+        override_reason=reason.strip() if reason else None,
+    )
+    if document is None:
+        raise HTTPException(
+            409,
+            {"error": "export refused — the proposal is not yet provable",
+             "blockers": blockers,
+             "hint": "resolve the blockers, or override with a name + reason"},
+        )
+    return Response(
+        content=document,
+        media_type=DOCX_MEDIA,
+        headers={
+            "Content-Disposition": f'attachment; filename="proposal-{tender_id}.docx"',
+            "X-Export-Overridden": "true" if blockers else "false",
+        },
+    )
 
 
 @router.post("/library/blocks", status_code=201)

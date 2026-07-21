@@ -10,6 +10,8 @@ import {
   fetchAgentRuns,
   fetchAmendments,
   fetchBrief,
+  exportPreflight,
+  exportProposal,
   fetchProposal,
   fetchQuestions,
   fetchRules,
@@ -22,12 +24,14 @@ import {
   runExtraction,
   signOffDecision,
   type Amendment,
+  type ExportBlocker,
   type Proposal,
   type QueryLetter,
   type Rule,
   type Verdict,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
+import { ExportBar } from "./components/ExportBar";
 import { ProposalPanel } from "./components/ProposalPanel";
 import { QuestionsPanel } from "./components/QuestionsPanel";
 import {
@@ -78,6 +82,8 @@ export function Workspace({
   const [drafting, setDrafting] = useState(false);
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [writing, setWriting] = useState(false);
+  const [blockers, setBlockers] = useState<ExportBlocker[] | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,6 +106,19 @@ export function Workspace({
     fetchAmendments(tenderId).then(setAmendments).catch(() => setAmendments([]));
     fetchQuestions(tenderId).then(setLetters).catch(() => setLetters([]));
     fetchProposal(tenderId).then(setProposal).catch(() => setProposal(null));
+    exportPreflight(tenderId)
+      .then((p) => setBlockers(p.blockers))
+      .catch(() => setBlockers(null));
+  };
+
+  const handleExport = async (override?: { name: string; reason: string }) => {
+    setExporting(true);
+    try {
+      const remaining = await exportProposal(tenderId, override);
+      setBlockers(remaining);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleDraftProposal = async () => {
@@ -247,6 +266,16 @@ export function Workspace({
 
       {tab === "proposal" ? (
         <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+          {proposal && (
+            <div className="mx-auto max-w-2xl px-6 pt-6">
+              <ExportBar
+                blockers={blockers}
+                onExport={() => handleExport()}
+                onOverride={(name, reason) => handleExport({ name, reason })}
+                busy={exporting}
+              />
+            </div>
+          )}
           <ProposalPanel
             proposal={proposal}
             onGenerate={handleDraftProposal}
