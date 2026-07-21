@@ -55,6 +55,7 @@ import {
   type BriefRisk,
   type DecisionData,
 } from "./components/DecisionRoom";
+import { LearnedNote } from "./components/LearnedNote";
 import { MatrixTable } from "./components/MatrixTable";
 import { PdfProof, type Highlight } from "./components/PdfProof";
 
@@ -444,6 +445,7 @@ export function Workspace({
                         <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">
                           {rule.requirement_text}
                         </div>
+                        {rule.learned && <LearnedNote learned={rule.learned} />}
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
                           <span>p.{rule.page_no}</span>
                           <span>{rule.source}</span>

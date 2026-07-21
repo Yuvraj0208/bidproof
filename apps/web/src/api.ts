@@ -56,6 +56,13 @@ export interface RadarCard {
   checkpoint0: string | null;
 }
 
+export interface LearnedPrefill {
+  suggested_value: string;
+  note: string;
+  based_on_count: number;
+  source_tender_id: string | null;
+}
+
 export interface Rule {
   rule_id: string;
   family: string;
@@ -71,7 +78,24 @@ export interface Rule {
   confidence: number;
   band: "green" | "yellow" | "red";
   reason: string;
+  // US-20: a pre-fill carried from past corrections — always shown, never silent.
+  learned: LearnedPrefill | null;
 }
+
+export const correctRule = (
+  tenderId: string,
+  ruleId: string,
+  correctedValue: string,
+  name: string,
+) =>
+  request<{ correction_id: string; key: string; is_label: boolean; message: string }>(
+    `/tenders/${tenderId}/rules/${ruleId}/correct`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ corrected_value: correctedValue, name }),
+    },
+  );
 
 export interface Amendment {
   id: string;

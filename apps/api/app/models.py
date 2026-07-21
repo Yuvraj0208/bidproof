@@ -776,3 +776,41 @@ class Element(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class Correction(Base):
+    """A human's correction of an extracted clause — the flywheel (US-20).
+    is_label is True only for reviewer-or-above corrections; junior fixes are
+    kept for audit but never taught (SPEC §11.3, poisoning defence). Two
+    matching labels for the same clause key pre-fill the next similar tender,
+    with a visible provenance note (§8 layer 4)."""
+
+    __tablename__ = "corrections"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rules.rule_id", ondelete="SET NULL")
+    )
+    family: Mapped[str] = mapped_column(String, nullable=False)
+    key: Mapped[str] = mapped_column(String, nullable=False)
+    corrected_value: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_by_role: Mapped[str] = mapped_column(String, nullable=False)
+    corrected_by_name: Mapped[str] = mapped_column(String, nullable=False)
+    is_label: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

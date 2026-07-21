@@ -40,6 +40,20 @@ def _role_from_header(x_role: str | None) -> Role:
         raise HTTPException(400, f"unknown role {x_role!r}")
 
 
+async def get_role(x_role: str | None = Header(default=None)) -> Role:
+    """Dependency: the acting role, ungated. For endpoints that admit several
+    roles but then branch on which one is acting (e.g. the correction flywheel,
+    where anyone may correct but only reviewer+ corrections become labels)."""
+    return _role_from_header(x_role)
+
+
+def is_label_role(role: Role) -> bool:
+    """A correction becomes a training label only from reviewer or above — the
+    poisoning defence (SPEC §11.3). Auditor sits outside the acting chain, so
+    its corrections never label either."""
+    return role in _RANK and _RANK[role] >= _RANK[Role.REVIEWER]
+
+
 def require_role(*allowed: Role):
     """Dependency: allow the listed roles, plus anyone ranked at or above the
     lowest listed acting role (admin outranks bid_head, etc.). Auditor is only
