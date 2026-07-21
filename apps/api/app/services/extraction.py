@@ -61,8 +61,13 @@ async def _call_model(
             temperature=0,
         )
         if usage is not None and isinstance(response.get("usage"), dict):
-            usage["in"] = usage.get("in", 0) + int(response["usage"].get("prompt_tokens", 0))
-            usage["out"] = usage.get("out", 0) + int(response["usage"].get("completion_tokens", 0))
+            u = response["usage"]
+            usage["in"] = usage.get("in", 0) + int(u.get("prompt_tokens", 0))
+            usage["out"] = usage.get("out", 0) + int(u.get("completion_tokens", 0))
+            # The gateway returns the real USD cost per call — carry it through
+            # so the Agent Console shows genuine rupees, not a token estimate.
+            if u.get("cost") is not None:
+                usage["cost_usd"] = usage.get("cost_usd", 0.0) + float(u["cost"])
         return response["choices"][0]["message"]["content"]
     except Exception as exc:
         logger.warning("extractor model call failed: %s", exc)
@@ -197,9 +202,14 @@ async def extract_rules(
             )
 
     tokens_in, tokens_out = usage.get("in", 0), usage.get("out", 0)
-    cost_inr = round(
-        (tokens_in + tokens_out) / 1000 * get_settings().llm_cost_per_1k_tokens_inr, 4
-    )
+    settings = get_settings()
+    if usage.get("cost_usd"):
+        # Real cost from the gateway, converted to rupees.
+        cost_inr = round(usage["cost_usd"] * settings.usd_to_inr, 4)
+    else:
+        cost_inr = round(
+            (tokens_in + tokens_out) / 1000 * settings.llm_cost_per_1k_tokens_inr, 4
+        )
     await record_agent_run(
         org_id, tender_id, "extractor",
         duration_ms=int((time.monotonic() - started) * 1000),
