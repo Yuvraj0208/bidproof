@@ -11,6 +11,7 @@ from app.routers import (
     capability,
     checks,
     console,
+    declarations,
     decision,
     discovery,
     health,
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(amendment.router)
     app.include_router(questions.router)
     app.include_router(proposal.router)
+    app.include_router(declarations.router)
     return app
 
 

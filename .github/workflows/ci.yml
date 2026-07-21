@@ -87,4 +87,4 @@ jobs:
           uvx pip-licenses
           --python "$(pwd)/apps/api/.venv/bin/python"
           --allow-only "MIT;MIT License;MIT-0;BSD License;BSD-2-Clause;BSD-3-Clause;3-Clause BSD License;Apache-2.0;Apache Software License;Apache-2.0 OR BSD-2-Clause;BSD-3-Clause, Apache-2.0, dependency licenses;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
-          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser bidproof-adapters bidproof-scout bidproof-triage bidproof-extractor bidproof-matcher bidproof-riskscorer bidproof-decider bidproof-questionwriter bidproof-librarian bidproof-proposalwriter bidproof-factchecker
+          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser bidproof-adapters bidproof-scout bidproof-triage bidproof-extractor bidproof-matcher bidproof-riskscorer bidproof-decider bidproof-questionwriter bidproof-librarian bidproof-proposalwriter bidproof-factchecker bidproof-formfiller

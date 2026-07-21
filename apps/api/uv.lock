@@ -188,6 +188,7 @@ dependencies = [
     { name = "bidproof-decider" },
     { name = "bidproof-extractor" },
     { name = "bidproof-factchecker" },
+    { name = "bidproof-formfiller" },
     { name = "bidproof-librarian" },
     { name = "bidproof-matcher" },
     { name = "bidproof-parser" },
@@ -233,6 +234,7 @@ requires-dist = [
     { name = "bidproof-decider", editable = "../../agents/decider" },
     { name = "bidproof-extractor", editable = "../../agents/extractor" },
     { name = "bidproof-factchecker", editable = "../../agents/factchecker" },
+    { name = "bidproof-formfiller", editable = "../../agents/formfiller" },
     { name = "bidproof-librarian", editable = "../../agents/librarian" },
     { name = "bidproof-matcher", editable = "../../agents/matcher" },
     { name = "bidproof-parser", editable = "../../agents/parser" },
@@ -283,6 +285,11 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.7" }]
 name = "bidproof-factchecker"
 version = "0.1.0"
 source = { editable = "../../agents/factchecker" }
+
+[[package]]
+name = "bidproof-formfiller"
+version = "0.1.0"
+source = { editable = "../../agents/formfiller" }
 
 [[package]]
 name = "bidproof-librarian"
