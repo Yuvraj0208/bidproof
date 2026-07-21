@@ -2,18 +2,24 @@
 // Every card wears the confidence chip — the design system's trust primitive.
 import { useEffect, useState } from "react";
 import {
+  createOrg,
   fetchRadar,
   getOrgId,
   getRole,
   ROLES,
   runModelLab,
+  saveBranding,
+  saveOnboardingProfile,
   setOrgId,
   setRole,
+  uploadFactsCsv,
+  uploadProductsCsv,
   type ModelLabResult,
   type RadarCard,
   type RoleName,
 } from "./api";
 import { ModelLab } from "./components/ModelLab";
+import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { Workspace } from "./Workspace";
 
@@ -33,6 +39,7 @@ export default function App() {
   const [showLab, setShowLab] = useState(false);
   const [lab, setLab] = useState<ModelLabResult | null>(null);
   const [labBusy, setLabBusy] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
 
   const runLab = async () => {
     setLabBusy(true);
@@ -64,6 +71,32 @@ export default function App() {
     );
   }
 
+  if (onboarding) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <OnboardingWizard
+          onCreateOrg={async (name, slug) => {
+            const created = await createOrg(name, slug);
+            // set the org context so the CSV + profile steps are scoped to it
+            setOrgId(created.org_id);
+            setOrg(created.org_id);
+            return created;
+          }}
+          onUploadFacts={uploadFactsCsv}
+          onUploadProducts={uploadProductsCsv}
+          onSaveProfile={async (profile) => {
+            await saveOnboardingProfile(profile);
+          }}
+          onFinish={async (branding) => {
+            await saveBranding({ ...branding, finish: true });
+          }}
+          onDone={() => setOnboarding(false)}
+          onCancel={() => setOnboarding(false)}
+        />
+      </div>
+    );
+  }
+
   if (showLab) {
     return (
       <div className="min-h-screen bg-slate-50">
@@ -92,6 +125,12 @@ export default function App() {
             className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
           >
             Model Lab
+          </button>
+          <button
+            onClick={() => setOnboarding(true)}
+            className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            New company
           </button>
           <input
             value={org}

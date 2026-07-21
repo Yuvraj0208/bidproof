@@ -18,6 +18,7 @@ from app.routers import (
     discovery,
     health,
     modellab,
+    onboarding,
     proposal,
     questions,
     radar,
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(admin.router)
     app.include_router(modellab.router)
+    app.include_router(onboarding.router)
     return app
 
 

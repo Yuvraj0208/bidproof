@@ -440,3 +440,94 @@ export async function fetchDocumentBlobById(
   if (!response.ok) throw new Error(`${response.status}`);
   return response.arrayBuffer();
 }
+
+// --- Onboarding wizard (US-17) -------------------------------------------
+
+export interface OnboardingStatus {
+  org_id: string;
+  name: string;
+  slug: string;
+  steps: {
+    org: boolean;
+    facts: boolean;
+    products: boolean;
+    profile: boolean;
+    branding: boolean;
+  };
+  facts: number;
+  products: number;
+  onboarded: boolean;
+  ready: boolean;
+}
+
+// Creating the org is the one open step — it precedes having an org id, so it
+// deliberately does not carry the org header.
+export async function createOrg(
+  name: string,
+  slug: string,
+): Promise<{ org_id: string; name: string; slug: string }> {
+  const response = await fetch(`${API_BASE}/onboarding/org`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, slug }),
+  });
+  if (response.status === 409) throw new Error(`slug '${slug}' is already taken`);
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.json();
+}
+
+async function uploadCsv(
+  path: string,
+  csv: string,
+  filename: string,
+): Promise<Response> {
+  const form = new FormData();
+  form.append("file", new Blob([csv], { type: "text/csv" }), filename);
+  return fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+}
+
+export async function uploadFactsCsv(csv: string): Promise<number> {
+  const r = await uploadCsv("/onboarding/facts", csv, "facts.csv");
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()).facts_loaded as number;
+}
+
+export async function uploadProductsCsv(csv: string): Promise<number> {
+  const r = await uploadCsv("/onboarding/products", csv, "products.csv");
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return (await r.json()).products_loaded as number;
+}
+
+export const saveOnboardingProfile = (profile: {
+  categories: { name: string; keywords: string[] }[];
+  weights: Record<string, number>;
+  value_band_inr: { min_inr?: number; max_inr?: number };
+  locations: string[];
+  win_categories: string[];
+}) =>
+  request<{ profile: string }>(`/onboarding/profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+
+export const saveBranding = (branding: {
+  primary_color?: string;
+  logo_url?: string;
+  finish: boolean;
+}) =>
+  request<{ branding: string; onboarded: boolean }>(`/onboarding/branding`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(branding),
+  });
+
+export const fetchOnboardingStatus = () =>
+  request<OnboardingStatus>(`/onboarding/status`);
+
+export const FACTS_CSV_TEMPLATE_URL = `${API_BASE}/onboarding/templates/facts.csv`;
+export const PRODUCTS_CSV_TEMPLATE_URL = `${API_BASE}/onboarding/templates/products.csv`;
