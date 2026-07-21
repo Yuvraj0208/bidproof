@@ -711,6 +711,30 @@ class ChatMessage(Base):
     )
 
 
+class ModelLabRun(Base):
+    """One Model Lab run (US-14): the same gold set scored across models."""
+
+    __tablename__ = "model_lab_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    gold_tenders: Mapped[int] = mapped_column(Integer, nullable=False)
+    leaderboard: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    simulated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Element(Base):
     """A grounded piece of tender text. The schema makes ungrounded rows
     unrepresentable (§9 rule 1): text, box, page, and confidence are all

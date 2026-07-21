@@ -17,6 +17,7 @@ from app.routers import (
     decision,
     discovery,
     health,
+    modellab,
     proposal,
     questions,
     radar,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(submission.router)
     app.include_router(chat.router)
     app.include_router(admin.router)
+    app.include_router(modellab.router)
     return app
 
 

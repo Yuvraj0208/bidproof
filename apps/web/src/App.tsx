@@ -6,11 +6,14 @@ import {
   getOrgId,
   getRole,
   ROLES,
+  runModelLab,
   setOrgId,
   setRole,
+  type ModelLabResult,
   type RadarCard,
   type RoleName,
 } from "./api";
+import { ModelLab } from "./components/ModelLab";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { Workspace } from "./Workspace";
 
@@ -27,6 +30,18 @@ export default function App() {
   const [cards, setCards] = useState<RadarCard[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<{ id: string; title: string } | null>(null);
+  const [showLab, setShowLab] = useState(false);
+  const [lab, setLab] = useState<ModelLabResult | null>(null);
+  const [labBusy, setLabBusy] = useState(false);
+
+  const runLab = async () => {
+    setLabBusy(true);
+    try {
+      setLab(await runModelLab("extraction"));
+    } finally {
+      setLabBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!org) return;
@@ -49,12 +64,35 @@ export default function App() {
     );
   }
 
+  if (showLab) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <header className="flex items-center gap-4 border-b bg-white px-6 py-3">
+          <h1 className="text-lg font-semibold text-indigo-900">BidProof</h1>
+          <button
+            onClick={() => setShowLab(false)}
+            className="rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            ← Radar
+          </button>
+        </header>
+        <ModelLab result={lab} onRun={runLab} busy={labBusy} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b bg-white px-6 py-3">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-indigo-900">BidProof</h1>
           <span className="text-xs text-slate-400">Tender Radar</span>
+          <button
+            onClick={() => setShowLab(true)}
+            className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            Model Lab
+          </button>
           <input
             value={org}
             onChange={(e) => {

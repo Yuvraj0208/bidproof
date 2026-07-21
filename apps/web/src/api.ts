@@ -305,6 +305,33 @@ export async function amendTender(tenderId: string, file: File): Promise<Amendme
   return response.json();
 }
 
+export interface LeaderboardRow {
+  model: string;
+  kind: string;
+  f1_overall: number;
+  f1_eligibility: number;
+  exact_numbers: number | null;
+  hallucination_rate: number;
+  citation_complete: number;
+  speed_ms: number;
+  cost_per_tender_inr: number;
+  simulated: boolean;
+}
+
+export interface ModelLabResult {
+  role: string;
+  gold_tenders: number;
+  simulated: boolean;
+  leaderboard: LeaderboardRow[];
+}
+
+export const runModelLab = (role = "extraction") =>
+  request<ModelLabResult>(`/modellab/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+
 export const fetchRadar = (list?: string) =>
   request<RadarCard[]>(`/radar${list ? `?list=${list}` : ""}`);
 

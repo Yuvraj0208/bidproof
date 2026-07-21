@@ -1,0 +1,11 @@
+{
+  "_comment": "Model Lab profiles (US-14, SPEC §12.4). Model names are CONFIG, not code — the app loads them here so no vendor/model name is hardcoded in application source (golden rule 7). Quality fields are illustrative simulated stand-ins until real API keys are configured; then each entry maps to a real gateway call.",
+  "extraction": [
+    {"name": "pattern-only (baseline)", "kind": "baseline", "recall": 1.0, "value_error": 0.0, "fabrication": 0.0, "speed_ms": 40, "cost_per_tender_inr": 0.0},
+    {"name": "qwen3-30b (open)", "kind": "open", "recall": 0.95, "value_error": 0.05, "fabrication": 0.10, "speed_ms": 900, "cost_per_tender_inr": 0.8},
+    {"name": "llama-3.3-70b (open)", "kind": "open", "recall": 0.90, "value_error": 0.08, "fabrication": 0.15, "speed_ms": 1400, "cost_per_tender_inr": 1.2},
+    {"name": "deepseek-r1 (open)", "kind": "open", "recall": 0.97, "value_error": 0.03, "fabrication": 0.08, "speed_ms": 2200, "cost_per_tender_inr": 1.6},
+    {"name": "gpt (paid)", "kind": "paid", "recall": 0.98, "value_error": 0.02, "fabrication": 0.05, "speed_ms": 1100, "cost_per_tender_inr": 6.5},
+    {"name": "claude (paid)", "kind": "paid", "recall": 0.99, "value_error": 0.01, "fabrication": 0.04, "speed_ms": 1000, "cost_per_tender_inr": 7.0}
+  ]
+}
