@@ -30,10 +30,12 @@ def make_app(gateway):
 
 
 def client_for(app, org_id):
+    # Default to the admin role so pipeline tests exercise the happy path;
+    # role-enforcement tests (test_governance_api) pass an explicit X-Role.
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
-        headers={"X-Org-Id": str(org_id)},
+        headers={"X-Org-Id": str(org_id), "X-Role": "admin"},
     )
 
 

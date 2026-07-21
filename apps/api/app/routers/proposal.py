@@ -10,6 +10,7 @@ from sqlalchemy import select
 from bidproof_librarian import chop_proposal
 
 from app.core.db import org_scoped_session
+from app.core.roles import Role, require_role
 from app.core.tenancy import require_org_id
 from app.models import LibraryBlockRow, Proposal, ProposalSection
 from app.services import export as export_service
@@ -192,9 +193,15 @@ async def export_proposal(
     tender_id: uuid.UUID,
     body: ExportIn | None = None,
     org_id: uuid.UUID = Depends(require_org_id),
+    role: Role = Depends(require_role(Role.BID_EXECUTIVE)),
 ) -> Response:
     name = body.override_name if body else None
     reason = body.override_reason if body else None
+    # Overriding the export blocker is a bid_head act, not just any user's.
+    if name and role not in (Role.BID_HEAD, Role.ADMIN):
+        raise HTTPException(
+            403, "overriding the export blocker requires the bid_head role"
+        )
     if (name and not reason) or (reason and not name):
         raise HTTPException(400, "an override needs BOTH a name and a written reason")
     if reason is not None and len(reason.strip()) < 5:
@@ -256,6 +263,22 @@ async def upload_proposal(
                 quarantined=True,
             ))
     return {"blocks": len(blocks), "quarantined": True}
+
+
+@router.post("/library/blocks/{block_id}/approve")
+async def approve_block(
+    block_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(require_org_id),
+    _role: Role = Depends(require_role(Role.REVIEWER)),
+) -> dict:
+    """Lift a block out of quarantine (SPEC §11.3). Only a reviewer or above
+    may do this — a junior or compromised account cannot poison the library."""
+    async with org_scoped_session(org_id) as session:
+        block = await session.get(LibraryBlockRow, block_id)
+        if block is None or block.org_id != org_id:
+            raise HTTPException(404, "library block not found")
+        block.quarantined = False
+    return {"id": str(block_id), "quarantined": False}
 
 
 @router.get("/library/blocks")

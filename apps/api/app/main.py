@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.routers import (
+    admin,
     amendment,
     capability,
     chat,
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(declarations.router)
     app.include_router(submission.router)
     app.include_router(chat.router)
+    app.include_router(admin.router)
     return app
 
 

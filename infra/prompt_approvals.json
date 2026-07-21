@@ -1,0 +1,33 @@
+{
+  "_comment": "Approved production prompts (SPEC §14). A prompt change alters its sha256 and fails the prompt-approval gate (tests/test_prompt_approval.py) until re-approved here — re-approval requires the gold-set tests to pass.",
+  "extractor_v1": {
+    "version": "extractor_v1",
+    "sha256": "d5ab508deafb42dadca822ef906e5f3861d16af21d87e6933a01eb686650a215",
+    "approved_by": "Yuvraj",
+    "gold_set_passed": true
+  },
+  "extractor_vote_v1": {
+    "version": "extractor_vote_v1",
+    "sha256": "86d29f8ec17fb3e9eb232076cc8a7b312ffe9cbbc44784be5b5e549afd708789",
+    "approved_by": "Yuvraj",
+    "gold_set_passed": true
+  },
+  "judge_v1": {
+    "version": "judge_v1",
+    "sha256": "a78ba0183d716d47b2b5fc0dc0b3adebbfbeb1e0bcb7066f114647fd893dabd4",
+    "approved_by": "Yuvraj",
+    "gold_set_passed": true
+  },
+  "writer_v1": {
+    "version": "writer_v1",
+    "sha256": "9392530f96b04a824778192389181d8f92cfb2ea8c9a46eb9f073067a8a2a4bf",
+    "approved_by": "Yuvraj",
+    "gold_set_passed": true
+  },
+  "question_v1": {
+    "version": "question_v1",
+    "sha256": "67e4c74ad8a866e9d677157a92b05d78b914dc725ffa52206edde5b53aac5c18",
+    "approved_by": "Yuvraj",
+    "gold_set_passed": true
+  }
+}

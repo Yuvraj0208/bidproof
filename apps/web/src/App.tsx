@@ -1,7 +1,16 @@
 // Tender Radar (SPEC §17 screen 1): two lists + the Checkpoint-0 queue.
 // Every card wears the confidence chip — the design system's trust primitive.
 import { useEffect, useState } from "react";
-import { fetchRadar, getOrgId, setOrgId, type RadarCard } from "./api";
+import {
+  fetchRadar,
+  getOrgId,
+  getRole,
+  ROLES,
+  setOrgId,
+  setRole,
+  type RadarCard,
+  type RoleName,
+} from "./api";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { Workspace } from "./Workspace";
 
@@ -13,6 +22,7 @@ const TABS = [
 
 export default function App() {
   const [org, setOrg] = useState(getOrgId());
+  const [role, setRoleState] = useState<RoleName>(getRole());
   const [tab, setTab] = useState<string>("in_our_lane");
   const [cards, setCards] = useState<RadarCard[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +64,23 @@ export default function App() {
             placeholder="Org id"
             className="ml-auto w-80 rounded border px-2 py-1 font-mono text-xs"
           />
+          <select
+            data-testid="role-select"
+            value={role}
+            onChange={(e) => {
+              const next = e.target.value as RoleName;
+              setRoleState(next);
+              setRole(next);
+            }}
+            className="rounded border px-2 py-1 text-xs"
+            title="Acting role — gates sensitive actions"
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
         </div>
       </header>
 

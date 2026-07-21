@@ -10,10 +10,32 @@ export function setOrgId(orgId: string): void {
   localStorage.setItem("bidproof_org_id", orgId);
 }
 
+export const ROLES = [
+  "viewer",
+  "bid_executive",
+  "reviewer",
+  "bid_head",
+  "admin",
+  "auditor",
+] as const;
+export type RoleName = (typeof ROLES)[number];
+
+export function getRole(): RoleName {
+  return (localStorage.getItem("bidproof_role") as RoleName) ?? "bid_executive";
+}
+
+export function setRole(role: RoleName): void {
+  localStorage.setItem("bidproof_role", role);
+}
+
+export function authHeaders(): Record<string, string> {
+  return { "X-Org-Id": getOrgId(), "X-Role": getRole() };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "X-Org-Id": getOrgId(), ...(init?.headers ?? {}) },
+    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
   });
   if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
   return response.json() as Promise<T>;
@@ -250,7 +272,7 @@ export async function exportProposal(
 ): Promise<ExportBlocker[]> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/proposal/export`, {
     method: "POST",
-    headers: { "X-Org-Id": getOrgId(), "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(
       override
         ? { override_name: override.name, override_reason: override.reason }
@@ -276,7 +298,7 @@ export async function amendTender(tenderId: string, file: File): Promise<Amendme
   form.append("file", file);
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/amend`, {
     method: "POST",
-    headers: { "X-Org-Id": getOrgId() },
+    headers: authHeaders(),
     body: form,
   });
   if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
@@ -360,7 +382,7 @@ export const replayTender = (tenderId: string) =>
 
 export async function downloadMatrix(tenderId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/matrix.xlsx`, {
-    headers: { "X-Org-Id": getOrgId() },
+    headers: authHeaders(),
   });
   if (!response.ok) throw new Error(`${response.status}`);
   const url = URL.createObjectURL(await response.blob());
@@ -376,7 +398,7 @@ export const runExtraction = (tenderId: string) =>
 
 export async function fetchDocumentBlob(tenderId: string): Promise<ArrayBuffer> {
   const response = await fetch(`${API_BASE}/tenders/${tenderId}/document`, {
-    headers: { "X-Org-Id": getOrgId() },
+    headers: authHeaders(),
   });
   if (!response.ok) throw new Error(`${response.status}`);
   return response.arrayBuffer();
@@ -386,7 +408,7 @@ export async function fetchDocumentBlobById(
   documentId: string,
 ): Promise<ArrayBuffer> {
   const response = await fetch(`${API_BASE}/documents/${documentId}/file`, {
-    headers: { "X-Org-Id": getOrgId() },
+    headers: authHeaders(),
   });
   if (!response.ok) throw new Error(`${response.status}`);
   return response.arrayBuffer();

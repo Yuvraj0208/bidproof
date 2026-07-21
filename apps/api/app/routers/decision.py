@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.core.db import org_scoped_session
+from app.core.roles import Role, require_role
 from app.core.tenancy import require_org_id
 from app.models import Decision, RiskRow, Tender, VerdictRow
 from app.services import deciding
@@ -96,6 +97,7 @@ async def sign_off(
     tender_id: uuid.UUID,
     body: SignOffIn,
     org_id: uuid.UUID = Depends(require_org_id),
+    _role: Role = Depends(require_role(Role.BID_HEAD)),
 ) -> dict:
     result = await deciding.sign_off(org_id, tender_id, body.name.strip())
     if result is None:
@@ -108,6 +110,7 @@ async def override(
     tender_id: uuid.UUID,
     body: OverrideIn,
     org_id: uuid.UUID = Depends(require_org_id),
+    _role: Role = Depends(require_role(Role.BID_HEAD)),
 ) -> dict:
     if body.recommendation not in ("go", "no_go"):
         raise HTTPException(400, "recommendation must be go or no_go")
