@@ -743,6 +743,10 @@ class Element(Base):
     y1: Mapped[float] = mapped_column(Float, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    guard_flagged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    guard_category: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

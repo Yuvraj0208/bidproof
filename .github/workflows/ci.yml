@@ -37,6 +37,10 @@ jobs:
           minio/minio server /data
       - name: Install dependencies
         run: uv sync --project apps/api
+      # The attack suite is its own gate (SPEC §11.5): the build fails if any
+      # hostile input lands. Shown distinctly so it can be pointed at in a demo.
+      - name: Attack suite (security)
+        run: uv run --project apps/api pytest tests/test_attack_suite.py -q
       - name: Run tests (unit + integration)
         run: uv run --project apps/api pytest -q
       - name: Publish gold-set evaluation report

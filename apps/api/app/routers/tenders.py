@@ -75,6 +75,8 @@ class ElementOut(BaseModel):
     bbox: BBoxOut
     confidence: float
     seq: int
+    guard_flagged: bool = False
+    guard_category: str | None = None
 
 
 class TenderOut(BaseModel):
@@ -252,6 +254,8 @@ async def list_elements(
                 bbox=BBoxOut(x0=e.x0, y0=e.y0, x1=e.x1, y1=e.y1),
                 confidence=e.confidence,
                 seq=e.seq,
+                guard_flagged=e.guard_flagged,
+                guard_category=e.guard_category,
             )
             for e in elements
         ]

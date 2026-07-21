@@ -12,12 +12,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
+from bidproof_guard import scan as guard_scan
+from bidproof_parser import ParserLadder, compute_parse_cost_inr
+
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
 from app.models import Document, Element, Page, ParseRun, Tender
 from app.observability import ParseRunLog, record_agent_run
 from app.storage import ObjectStorage
-from bidproof_parser import ParserLadder, compute_parse_cost_inr
 
 PDF_MAGIC = b"%PDF-"
 
@@ -243,9 +245,16 @@ async def execute_parse_run(
             )
         await session.flush()
 
+        guard_flag_count = 0
         for page in result.pages:
             for element in page.elements:
                 element_count += 1
+                # The injection scanner runs over every element (§11.1). A hit
+                # is FLAGGED for the human and treated as inert data — the
+                # ground-check, schemas, and least privilege stop it acting.
+                verdict = guard_scan(element.text)
+                if verdict.flagged:
+                    guard_flag_count += 1
                 session.add(
                     Element(
                         org_id=org_id,
@@ -259,6 +268,8 @@ async def execute_parse_run(
                         y1=element.bbox.y1,
                         confidence=element.confidence,
                         seq=element.seq,
+                        guard_flagged=verdict.flagged,
+                        guard_category=verdict.category,
                     )
                 )
 
@@ -297,5 +308,6 @@ async def execute_parse_run(
         duration_ms=int((time.monotonic() - started) * 1000),
         cost_inr=cost_inr,
         meta={"pages_total": result.pages_total, "pages_ocr": result.pages_ocr,
-              "pages_flagged": result.pages_flagged, "elements": element_count},
+              "pages_flagged": result.pages_flagged, "elements": element_count,
+              "guard_flagged_elements": guard_flag_count},
     )
