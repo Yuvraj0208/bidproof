@@ -1,12 +1,15 @@
 // Tender Radar (SPEC §17 screen 1): two lists + the Checkpoint-0 queue.
 // Every card wears the confidence chip — the design system's trust primitive.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createOrg,
   fetchRadar,
   getOrgId,
   getRole,
   ROLES,
+  runCheck,
+  runDiscovery,
+  runExtraction,
   runModelLab,
   saveBranding,
   saveOnboardingProfile,
@@ -14,6 +17,7 @@ import {
   setRole,
   uploadFactsCsv,
   uploadProductsCsv,
+  uploadTender,
   type ModelLabResult,
   type RadarCard,
   type RoleName,
@@ -40,6 +44,10 @@ export default function App() {
   const [lab, setLab] = useState<ModelLabResult | null>(null);
   const [labBusy, setLabBusy] = useState(false);
   const [onboarding, setOnboarding] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const runLab = async () => {
     setLabBusy(true);
@@ -47,6 +55,45 @@ export default function App() {
       setLab(await runModelLab("extraction"));
     } finally {
       setLabBusy(false);
+    }
+  };
+
+  // Upload a tender PDF → process it (extract + check) → open its workspace.
+  const onUpload = async (file: File) => {
+    setStatus(null);
+    setBusy(`Uploading ${file.name}…`);
+    try {
+      const { tender_id } = await uploadTender(file);
+      setBusy("Extracting rules…");
+      await runExtraction(tender_id);
+      setBusy("Checking against your capability…");
+      await runCheck(tender_id);
+      setOpen({ id: tender_id, title: file.name });
+    } catch (e) {
+      setStatus(`Upload failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Run the Scout now — scrape the portals and refresh the radar.
+  const onScrape = async () => {
+    setStatus(null);
+    setBusy("Scraping portals…");
+    try {
+      const result = await runDiscovery();
+      const ingested = result.runs.reduce((n, r) => n + r.ingested, 0);
+      const okAdapters = result.runs.filter((r) => r.ok).map((r) => r.adapter);
+      const failed = result.runs.filter((r) => !r.ok).map((r) => r.adapter);
+      setStatus(
+        `Scraped ${ingested} new tender(s) from ${okAdapters.join(", ") || "no"} portal(s)` +
+          (failed.length ? ` · unavailable: ${failed.join(", ")}` : ""),
+      );
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setStatus(`Scrape failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -59,7 +106,7 @@ export default function App() {
         setCards([]);
         setError(String(e));
       });
-  }, [org, tab, open]);
+  }, [org, tab, open, refresh]);
 
   if (open) {
     return (
@@ -133,6 +180,31 @@ export default function App() {
             New company
           </button>
           <input
+            ref={fileInput}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUpload(file);
+              e.target.value = ""; // allow re-uploading the same file
+            }}
+          />
+          <button
+            onClick={() => fileInput.current?.click()}
+            disabled={!org || busy !== null}
+            className="rounded border border-indigo-600 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+          >
+            ↑ Upload tender
+          </button>
+          <button
+            onClick={onScrape}
+            disabled={!org || busy !== null}
+            className="rounded border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            ⟳ Scrape now
+          </button>
+          <input
             value={org}
             onChange={(e) => {
               setOrg(e.target.value);
@@ -178,6 +250,16 @@ export default function App() {
       </nav>
 
       <main className="mx-auto max-w-3xl px-6 py-6">
+        {busy && (
+          <p className="mb-3 rounded bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+            {busy}
+          </p>
+        )}
+        {status && (
+          <p className="mb-3 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {status}
+          </p>
+        )}
         {!org && (
           <p className="text-sm text-slate-500">
             Paste your organisation id above to load the radar.
@@ -186,7 +268,7 @@ export default function App() {
         {error && <p className="text-sm text-red-600">{error}</p>}
         {org && !error && cards.length === 0 && (
           <p className="text-sm text-slate-500">
-            No tenders in this list yet — upload one or run discovery.
+            No tenders in this list yet — use ↑ Upload tender or ⟳ Scrape now.
           </p>
         )}
         <div className="space-y-3">

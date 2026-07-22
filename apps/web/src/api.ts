@@ -359,6 +359,40 @@ export const runModelLab = (role = "extraction") =>
 export const fetchRadar = (list?: string) =>
   request<RadarCard[]>(`/radar${list ? `?list=${list}` : ""}`);
 
+export interface UploadResult {
+  tender_id: string;
+  document_id: string;
+  status: string;
+}
+
+// Manual tender upload (US-03). Multipart — do not set Content-Type by hand.
+export async function uploadTender(file: File): Promise<UploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}/tenders/upload`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: form,
+  });
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.json();
+}
+
+export interface DiscoveryRunResult {
+  runs: {
+    adapter: string;
+    ok: boolean;
+    error: string | null;
+    discovered: number;
+    ingested: number;
+    duplicates: number;
+  }[];
+}
+
+// Run the Scout now — scrape the portal adapters (US-01).
+export const runDiscovery = () =>
+  request<DiscoveryRunResult>(`/discovery/run`, { method: "POST" });
+
 export const fetchRules = (tenderId: string) =>
   request<Rule[]>(`/tenders/${tenderId}/rules`);
 
