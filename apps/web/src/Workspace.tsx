@@ -7,6 +7,11 @@ import {
   approveSection,
   askChat,
   attachChecklistFile,
+  getRole,
+  roleAtLeast,
+  ROLES,
+  setRole,
+  type RoleName,
   computeDecision,
   downloadMatrix,
   fetchAgentRuns,
@@ -82,6 +87,7 @@ export function Workspace({
   onBack: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("rules");
+  const [role, setRoleState] = useState<RoleName>(getRole());
   const [rules, setRules] = useState<Rule[]>([]);
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
   const [decision, setDecision] = useState<DecisionData | null>(null);
@@ -295,7 +301,7 @@ export function Workspace({
               </button>
           ))}
         </nav>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {tab === "matrix" && verdicts.length > 0 && (
             <button
               onClick={() => downloadMatrix(tenderId)}
@@ -304,6 +310,23 @@ export function Workspace({
               Export .xlsx
             </button>
           )}
+          <select
+            data-testid="workspace-role-select"
+            value={role}
+            onChange={(e) => {
+              const next = e.target.value as RoleName;
+              setRoleState(next);
+              setRole(next);
+            }}
+            className="rounded border px-2 py-1 text-xs"
+            title="Acting role — gates sensitive actions (Checkpoints 4–6)"
+          >
+            {ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
           <button
             onClick={recheck}
             disabled={busy}
@@ -390,6 +413,8 @@ export function Workspace({
             risks={risks}
             onSignOff={handleSignOff}
             onOverride={handleOverride}
+            canSignOff={roleAtLeast(role, "bid_head")}
+            roleNote={`Checkpoint 4 requires the Bid Head role — you are acting as “${role}”. Switch role (top right) to sign or override.`}
           />
         </div>
       ) : (

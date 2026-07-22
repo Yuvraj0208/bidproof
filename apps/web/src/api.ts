@@ -28,6 +28,23 @@ export function setRole(role: RoleName): void {
   localStorage.setItem("bidproof_role", role);
 }
 
+// The linear chain of acting power, mirroring the backend (app.core.roles).
+// Auditor sits outside it — a read-only role that can never act on a bid.
+export const ROLE_RANK: Record<RoleName, number> = {
+  viewer: 0,
+  bid_executive: 1,
+  reviewer: 2,
+  bid_head: 3,
+  admin: 4,
+  auditor: -1,
+};
+
+// Whether `role` may perform an action gated at `min` (matches require_role).
+export function roleAtLeast(role: RoleName, min: RoleName): boolean {
+  if (ROLE_RANK[role] < 0) return false; // auditor never acts
+  return ROLE_RANK[role] >= ROLE_RANK[min];
+}
+
 export function authHeaders(): Record<string, string> {
   return { "X-Org-Id": getOrgId(), "X-Role": getRole() };
 }

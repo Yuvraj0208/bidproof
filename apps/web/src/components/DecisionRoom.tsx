@@ -44,11 +44,17 @@ export function DecisionRoom({
   risks,
   onSignOff,
   onOverride,
+  canSignOff = true,
+  roleNote,
 }: {
   decision: DecisionData | null;
   risks: BriefRisk[];
   onSignOff: (name: string) => void;
   onOverride: (name: string, recommendation: string, reason: string) => void;
+  // Checkpoint 4 is Bid-Head-and-above only. When the acting role can't sign,
+  // the controls are disabled and the requirement is shown (never silent).
+  canSignOff?: boolean;
+  roleNote?: string;
 }) {
   const [name, setName] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -147,16 +153,25 @@ export function DecisionRoom({
           <label className="block text-xs font-medium text-slate-600">
             Checkpoint 4 — a named human signs this decision
           </label>
+          {!canSignOff && roleNote && (
+            <p
+              data-testid="role-gate-note"
+              className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
+            >
+              {roleNote}
+            </p>
+          )}
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
-            className="w-full rounded border px-2 py-1 text-sm"
+            disabled={!canSignOff}
+            className="w-full rounded border px-2 py-1 text-sm disabled:bg-slate-50"
           />
           <div className="flex gap-2">
             <button
               data-testid="signoff-button"
-              disabled={name.trim().length < 2}
+              disabled={!canSignOff || name.trim().length < 2}
               onClick={() => onSignOff(name.trim())}
               className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
             >
@@ -168,11 +183,12 @@ export function DecisionRoom({
               value={overrideReason}
               onChange={(e) => setOverrideReason(e.target.value)}
               placeholder="Override reason (required, logged)"
-              className="w-full rounded border px-2 py-1 text-sm"
+              disabled={!canSignOff}
+              className="w-full rounded border px-2 py-1 text-sm disabled:bg-slate-50"
             />
             <button
               data-testid="override-button"
-              disabled={name.trim().length < 2 || overrideReason.trim().length < 5}
+              disabled={!canSignOff || name.trim().length < 2 || overrideReason.trim().length < 5}
               onClick={() =>
                 onOverride(
                   name.trim(),

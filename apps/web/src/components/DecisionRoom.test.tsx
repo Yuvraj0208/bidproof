@@ -61,6 +61,20 @@ describe("DecisionRoom", () => {
     expect(override).toBeEnabled();
   });
 
+  it("blocks sign-off for a role below Bid Head and explains why", () => {
+    const onSignOff = vi.fn();
+    render(<DecisionRoom decision={DECISION} risks={[]}
+                         onSignOff={onSignOff} onOverride={() => {}}
+                         canSignOff={false}
+                         roleNote="Checkpoint 4 requires the Bid Head role — you are acting as “viewer”." />);
+    expect(screen.getByTestId("role-gate-note")).toHaveTextContent("Bid Head");
+    // even with a name typed, sign-off stays disabled for this role
+    const name = screen.getByPlaceholderText("Your name");
+    expect(name).toBeDisabled();
+    expect(screen.getByTestId("signoff-button")).toBeDisabled();
+    expect(screen.getByTestId("override-button")).toBeDisabled();
+  });
+
   it("shows the hard gate when mandatory eligibility failed", () => {
     render(<DecisionRoom
       decision={{ ...DECISION, recommendation: "no_go", ev_inr: null,
