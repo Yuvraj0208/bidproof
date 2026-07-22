@@ -56,7 +56,13 @@ class LangfuseParseRunLogger:
                     id=entry.trace_id, name="tender", metadata={"tender_id": entry.tender_id}
                 )
                 trace.span(name="parse_run", metadata=metadata)
-            else:  # SDK v3 (OTel) API
+            elif hasattr(self._client, "create_event"):  # SDK v3/v4 (OTel) API
+                self._client.create_event(
+                    trace_context={"trace_id": entry.trace_id},
+                    name="parse_run",
+                    metadata=metadata,
+                )
+            elif hasattr(self._client, "start_span"):  # older OTel SDK
                 span = self._client.start_span(
                     name="parse_run",
                     metadata=metadata,
