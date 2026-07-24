@@ -6,6 +6,20 @@ with a one-line note when its tests pass and it is committed.
 Environment note: Docker Desktop on this machine is unstable — if the API 500s with
 `ConnectionRefusedError [WinError 1225]`, restart `bidproof-postgres-1` and retry.
 
+**Running integration tests wipes the demo data** (the `owner_conn` fixture TRUNCATEs
+`tenders, organizations CASCADE`). After any integration run, re-seed before demoing.
+Until Task 6 lands, the manual reseed is:
+
+```bash
+python -m uv run --project apps/api python infra/seed/seed_capability_demo.py
+python -m uv run --project apps/api python infra/seed/seed_library_demo.py
+```
+(these need a `demo-org` row to exist first — Task 6 must fold org+profile creation into
+one idempotent script, since this bit me three times in one session).
+
+The API must be restarted to pick up Python changes unless started with `--reload`:
+`python -m uv run --project apps/api uvicorn app.main:app --port 8000 --reload`
+
 ---
 
 ## Audit (Task 1) — completed 2026-07-25
@@ -99,15 +113,48 @@ pipeline. Screens look empty cold. **Severity: high (Task 6).**
 - [x] Walk every screen, produce evidence-based defect list — done above (D1–D14), commit `docs: audit`
 
 ### Task 2 — Turn on real intelligence
-- [ ] Gateway wiring verified for small/mid/strong; loud startup failure when keys missing
-- [ ] Mode (real-model vs deterministic) surfaced in the UI
+- [x] **Gateway wiring verified** — `strong` was pointed at a *reasoning* model
+      (`deepseek-r1`): it spent its budget in `reasoning_content` and returned empty
+      `content`, so the writer silently fell back to templates. **This was the root cause
+      of the shallow proposal.** Role repointed to `deepseek-chat` (config change only).
+      `/health/models` now probes all three roles; `mode: live` confirmed. Commit `278b5f1`.
+- [x] **Loud startup check** — `app/llm/availability.py` probes each role at boot and logs
+      `MODEL CHECK: live|DEGRADED|DETERMINISTIC` with the broken roles named. Never raises
+      (the API must boot so the UI can *show* the degraded state). Commit `278b5f1`.
+- [ ] Mode surfaced **in the UI** — API side done (`GET /health/models`), web badge still to build
 - [ ] Rule extraction: full text, clause number, family, obligation type, numeric threshold
 - [ ] Verdicts: reasoned justification citing tender element + company record
 - [ ] Risk register: per-clause ₹ impact + why it matters
 - [ ] Pre-bid letters: formal Indian government correspondence
-- [ ] Proposal: long, structured, section-by-section, still fully source-tagged (fixes D1, D2)
-- [ ] Chat: real reasoning over this tender's elements with page citations (fixes D3)
+- [~] **Proposal — much improved, not finished.** Commit `392a5ee`.
+      Fixed: **D1 scaffolding leak** (`<draft section=…>` reached an exported .docx —
+      now stripped and verified absent), and **model narration** ("Okay, let me start by…")
+      which the new `looks_like_reasoning()` guard catches with one strict retry before
+      falling back to the grounded draft. `extract_text()` no longer returns
+      `reasoning_content` as prose by default.
+      Measured on the demo tender: dropped-untagged sentences **126 → 13**, contradicted
+      claims **13 → 4**, export verified free of scaffolding *and* narration.
+      **Still weak:** 3 of 7 sections (company_profile, eligibility_compliance,
+      commercial_terms) still fall back to the short template, so the whole document is
+      ~5.4k chars — not yet the "genuinely long" target.
+      **Root cause + next step:** the model narrates when a requirement needs a *computed*
+      figure (average annual turnover) because prompt rule 4 forbids computing. The fix is
+      architectural and matches golden rule 3 (numbers are computed by code, never by an
+      LLM): **precompute derived facts — average turnover, total capacity — in
+      `build_fact_context()` and feed them in as ordinary tagged facts.** The model then
+      has the number and stops arguing with itself.
+- [x] **Chat: real reasoning with page citations (D3 fixed).** `_compose_answer()` took a
+      `gateway` and never used it. Now calls the `mid` role over the retrieved clauses,
+      and **discards any answer that fails a ground-check** (§9 rule 1), falling back to the
+      grounded quote. Retrieval gained tender-vocabulary aliases (EMD ↔ earnest money
+      deposit) which fixes the **false refusal** on in-scope questions.
+      Verified: "What is the EMD?" → *"…Rs 2,50,000, payable at submission (p.1)"* with 2
+      citations; "weather in Mumbai" still correctly refused. Commit `278b5f1`.
 - [ ] Show sample output: proposal, one pre-bid letter, three verdicts
+
+**Governance note:** changing the writer prompt correctly tripped the prompt-approval CI
+gate (SPEC §14). Followed the real flow — ran the gold set (passed), then re-approved the
+new hash in `infra/prompt_approvals.json`. The gate was not weakened.
 
 ### Task 3 — Fix everything from the audit
 - [ ] Work down D1–D14 not already covered by Task 2; list anything unfixable with reason
