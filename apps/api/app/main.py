@@ -38,9 +38,18 @@ async def lifespan(app: FastAPI):
 
         task = asyncio.create_task(discovery_loop())
         logger.info("discovery scheduler started")
+
+    # Is real intelligence actually on? Probe in the background so a slow or
+    # unreachable gateway cannot delay startup — the result is logged loudly
+    # and served at /health/models for the UI's mode badge.
+    from app.llm import availability
+
+    probe = asyncio.create_task(availability.log_at_startup())
+
     yield
-    if task is not None:
-        task.cancel()
+    for pending in (task, probe):
+        if pending is not None:
+            pending.cancel()
 
 
 def create_app() -> FastAPI:

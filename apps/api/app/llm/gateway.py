@@ -17,6 +17,40 @@ class UnknownRoleError(ValueError):
     """The caller asked for something that is not a configured role."""
 
 
+class EmptyCompletionError(RuntimeError):
+    """The gateway answered, but with no usable text.
+
+    Seen when a role is pointed at a *reasoning* model: it spends the token
+    budget in `reasoning_content` and returns an empty `content`. Callers must
+    not silently fall back to a template on this — that is how a shallow output
+    reaches a customer without anyone noticing (see docs/FINISH_STATUS.md D2).
+    """
+
+
+def extract_text(response: dict) -> str:
+    """The text of a completion, or raise EmptyCompletionError.
+
+    Tolerates reasoning models, which put their answer in `reasoning_content`
+    when `content` comes back empty.
+    """
+    choices = response.get("choices")
+    if not choices:
+        raise EmptyCompletionError(
+            f"gateway returned no choices: {str(response)[:200]}"
+        )
+    message = choices[0].get("message") or {}
+    for field in ("content", "reasoning_content"):
+        text = (message.get(field) or "").strip()
+        if text:
+            return text
+    finish = choices[0].get("finish_reason")
+    raise EmptyCompletionError(
+        f"gateway returned an empty completion (finish_reason={finish!r}). "
+        "If this role points at a reasoning model, raise max_tokens or point "
+        "the role at an instruction model."
+    )
+
+
 class LLMGateway:
     def __init__(
         self,

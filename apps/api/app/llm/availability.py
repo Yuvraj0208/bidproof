@@ -1,0 +1,89 @@
+"""Is real intelligence actually switched on?
+
+The pipeline may run in two modes:
+
+* **live**  — every agent calls its model role through the gateway.
+* **deterministic** — the gateway is unreachable or a role is misconfigured, so
+  agents fall back to their grounded templates.
+
+Deterministic mode is a legitimate fallback (it is how the product demos with
+no keys and no cost), but it must never be *silent*: a template answer that
+looks like a model answer is how a shallow output reaches a customer. The
+result of this probe is logged loudly at startup and surfaced in the UI
+(SPEC §13; docs/FINISH_STATUS.md D9).
+"""
+
+import asyncio
+import logging
+
+from app.llm.gateway import ROLES, LLMGateway, extract_text
+
+logger = logging.getLogger(__name__)
+
+_PROBE = [{"role": "user", "content": "Reply with the single word: OK"}]
+
+# Cached so the UI can poll cheaply; refreshed at startup and on demand.
+_status: dict | None = None
+
+
+async def probe_roles(timeout_s: float = 25.0) -> dict:
+    """Ask every role for one token. Returns per-role health + overall mode."""
+    gateway = LLMGateway()
+    roles: dict[str, dict] = {}
+    try:
+        for role in sorted(ROLES):
+            try:
+                async with asyncio.timeout(timeout_s):
+                    response = await gateway.complete(
+                        role, messages=_PROBE, max_tokens=200
+                    )
+                extract_text(response)  # raises if empty/reasoning-only
+                roles[role] = {"ok": True, "model": response.get("model"), "error": None}
+            except Exception as exc:
+                roles[role] = {
+                    "ok": False,
+                    "model": None,
+                    "error": f"{type(exc).__name__}: {str(exc)[:160]}",
+                }
+    finally:
+        await gateway.aclose()
+
+    healthy = [r for r, v in roles.items() if v["ok"]]
+    mode = "live" if len(healthy) == len(ROLES) else (
+        "degraded" if healthy else "deterministic"
+    )
+    return {"mode": mode, "roles": roles, "healthy": sorted(healthy)}
+
+
+async def refresh() -> dict:
+    global _status
+    _status = await probe_roles()
+    return _status
+
+
+def cached() -> dict | None:
+    return _status
+
+
+async def log_at_startup() -> None:
+    """Loud, unmissable log line. Never raises — the API must still boot so the
+    UI can *show* the degraded mode rather than the user meeting a dead port."""
+    try:
+        status = await refresh()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("MODEL CHECK FAILED: %s", exc)
+        return
+    if status["mode"] == "live":
+        logger.info(
+            "MODEL CHECK: live — all roles reachable (%s)",
+            ", ".join(f"{r}={v['model']}" for r, v in status["roles"].items()),
+        )
+        return
+    broken = {r: v["error"] for r, v in status["roles"].items() if not v["ok"]}
+    logger.error(
+        "MODEL CHECK: %s — real intelligence is NOT fully on. "
+        "Broken roles: %s. Agents will fall back to grounded templates and the "
+        "UI will show 'deterministic'. Fix the gateway/keys before demoing.",
+        status["mode"].upper(),
+        broken,
+    )
