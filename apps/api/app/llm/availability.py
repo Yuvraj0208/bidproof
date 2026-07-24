@@ -37,7 +37,8 @@ async def probe_roles(timeout_s: float = 25.0) -> dict:
                     response = await gateway.complete(
                         role, messages=_PROBE, max_tokens=200
                     )
-                extract_text(response)  # raises if empty/reasoning-only
+                # A probe only proves the role answers, so reasoning text counts here.
+                extract_text(response, allow_reasoning=True)
                 roles[role] = {"ok": True, "model": response.get("model"), "error": None}
             except Exception as exc:
                 roles[role] = {

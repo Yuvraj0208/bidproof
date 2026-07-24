@@ -27,11 +27,14 @@ class EmptyCompletionError(RuntimeError):
     """
 
 
-def extract_text(response: dict) -> str:
+def extract_text(response: dict, allow_reasoning: bool = False) -> str:
     """The text of a completion, or raise EmptyCompletionError.
 
-    Tolerates reasoning models, which put their answer in `reasoning_content`
-    when `content` comes back empty.
+    `allow_reasoning` is OFF by default and should stay off for anything a
+    human will read: a reasoning model's `reasoning_content` is its private
+    planning ("Okay, let me start by..."), and shipping that as prose is worse
+    than falling back to a grounded template. Health probes may switch it on,
+    since there any text proves the role answers.
     """
     choices = response.get("choices")
     if not choices:
@@ -39,7 +42,8 @@ def extract_text(response: dict) -> str:
             f"gateway returned no choices: {str(response)[:200]}"
         )
     message = choices[0].get("message") or {}
-    for field in ("content", "reasoning_content"):
+    fields = ("content", "reasoning_content") if allow_reasoning else ("content",)
+    for field in fields:
         text = (message.get(field) or "").strip()
         if text:
             return text

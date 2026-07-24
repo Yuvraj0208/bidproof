@@ -4,6 +4,7 @@ tags, and the FactChecker marks every claim. Runs only after a GO decision.
 """
 
 import logging
+import re
 import time
 import uuid
 from dataclasses import asdict
@@ -24,7 +25,7 @@ from bidproof_proposalwriter import (
 )
 
 from app.core.db import org_scoped_session
-from app.llm.gateway import LLMGateway
+from app.llm.gateway import LLMGateway, extract_text
 from app.models import (
     CatalogueProduct,
     CompanyFact,
@@ -49,35 +50,90 @@ def get_writer_gateway() -> LLMGateway:
     return LLMGateway()
 
 
+# A model sometimes echoes the prompt's own fences ("<draft section=...>") into
+# its answer. That scaffolding reached an exported customer document once
+# (docs/FINISH_STATUS.md D1) — strip it defensively, never ship it.
+_SCAFFOLD_RE = re.compile(
+    r"</?(?:draft|facts|requirements|style_reference|section)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def strip_scaffolding(text: str) -> str:
+    cleaned = _SCAFFOLD_RE.sub("", text)
+    # Drop a leading echoed label like 'Company Profile:' or 'Section:'
+    cleaned = re.sub(r"\A\s*(?:section\s*:|title\s*:)\s*", "", cleaned,
+                     flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+# A model sometimes narrates its plan instead of writing the section
+# ("Okay, let me start by...", "We are writing the X section", "Steps:").
+# That is private thinking, not bid prose — it must never reach a document.
+_REASONING_MARKERS = (
+    "we are writing", "let me start", "let me begin", "okay, let",
+    "first, i need", "my job is to", "the user is asking", "the user wants",
+    "the user provided", "steps:", "approach:", "i need to parse",
+    "we must avoid", "however, the requirement is", "never compute, convert",
+    "the requirements are repeated",
+)
+
+
+def looks_like_reasoning(text: str) -> bool:
+    """True when the text reads as the model's planning rather than the
+    section itself. Checked on the opening, where narration always starts."""
+    head = " ".join(text.lower().split())[:400]
+    return any(marker in head for marker in _REASONING_MARKERS)
+
+
 async def _polish_section(
     gateway: LLMGateway | None,
     section_tag: str,
     draft: str,
     fact_lines: str,
     style_blocks: list[LibraryBlock],
+    requirements: list[str] | None = None,
 ) -> str:
     if gateway is None:
         return draft
     style = "\n---\n".join(b.text for b in style_blocks) or "none available"
+    wanted = "\n".join(f"- {r}" for r in (requirements or [])[:12]) or "none stated"
     user = (
         f"<facts>\n{fact_lines}\n</facts>\n"
+        f"<requirements>\n{wanted}\n</requirements>\n"
         f"<style_reference>\n{style}\n</style_reference>\n"
         f"<draft section=\"{section_tag}\">\n{draft}\n</draft>"
     )
-    try:
-        response = await gateway.complete(
-            "strong",
-            messages=[
-                {"role": "system", "content": WRITER_PROMPT_V1},
-                {"role": "user", "content": user},
-            ],
-            temperature=0.4,
+    messages = [
+        {"role": "system", "content": WRITER_PROMPT_V1},
+        {"role": "user", "content": user},
+    ]
+    # One strict retry if the model narrates its plan instead of writing the
+    # section; then the grounded draft stands. Never ship thinking as prose.
+    for attempt in range(2):
+        if attempt:
+            messages = messages + [
+                {"role": "user", "content": (
+                    "That reply narrated your process instead of writing the "
+                    "section. Reply again with ONLY the finished section prose, "
+                    "beginning at its first sentence. No preamble, no planning, "
+                    "no restating of the task."
+                )},
+            ]
+        try:
+            response = await gateway.complete(
+                "strong", messages=messages, temperature=0.4, max_tokens=1600,
+            )
+            polished = strip_scaffolding(extract_text(response))
+        except Exception as exc:
+            logger.warning("writer polish failed for %s: %s", section_tag, exc)
+            return draft
+        if polished and not looks_like_reasoning(polished):
+            return polished
+        logger.warning(
+            "writer returned narration for %s (attempt %d)", section_tag, attempt + 1
         )
-        polished = response["choices"][0]["message"]["content"]
-        return polished if polished and polished.strip() else draft
-    except Exception as exc:
-        logger.warning("writer polish failed for %s: %s", section_tag, exc)
-        return draft
+    return draft
 
 
 async def generate_proposal(
@@ -163,7 +219,7 @@ async def generate_proposal(
             section_tag, tender_title, company_name, tagged, requirements
         )
         candidate = await _polish_section(
-            gateway, section_tag, draft, fact_lines, style_blocks
+            gateway, section_tag, draft, fact_lines, style_blocks, requirements
         )
         kept, dropped = enforce_source_tags(
             candidate, valid_tags, allowed_context=(tender_title,)
