@@ -22,6 +22,30 @@ The API must be restarted to pick up Python changes unless started with `--reloa
 
 ---
 
+## ⛔ BLOCKER — no model credit (needs Yuvraj, 2026-07-25)
+
+`https://openrouter.ai/api/v1/credits` reports **total_credits 0, total_usage $0.1923 →
+balance −$0.19**. Every sizeable model call now returns **402 Payment Required**, so the
+whole pipeline silently serves deterministic templates:
+
+```
+writer polish failed for cover_letter: Client error '402 Payment Required'
+  for url 'http://localhost:4000/v1/chat/completions'   (× all 7 sections)
+```
+
+**Nothing in Task 2 that needs a live model can be verified until the account is topped
+up** — proposal depth, verdict justifications, risk ₹-impact, formal pre-bid letters, and
+the sample outputs all require real calls. Unit-level work continues fine.
+
+Two things were fixed *because* of this:
+* the health probe used to ask for only 200 tokens, so it reported **`mode: live` on an
+  exhausted balance** while every real generation failed — it now probes with the writer's
+  real budget (1600) so the UI cannot show a false green;
+* a 402 is now reported as *"no model credit — top up the account behind the gateway"*
+  rather than a raw HTTP code.
+
+---
+
 ## Audit (Task 1) — completed 2026-07-25
 
 Method: API + web started, real requests against the seeded demo org
@@ -138,11 +162,18 @@ pipeline. Screens look empty cold. **Severity: high (Task 6).**
       commercial_terms) still fall back to the short template, so the whole document is
       ~5.4k chars — not yet the "genuinely long" target.
       **Root cause + next step:** the model narrates when a requirement needs a *computed*
-      figure (average annual turnover) because prompt rule 4 forbids computing. The fix is
-      architectural and matches golden rule 3 (numbers are computed by code, never by an
-      LLM): **precompute derived facts — average turnover, total capacity — in
-      `build_fact_context()` and feed them in as ordinary tagged facts.** The model then
-      has the number and stops arguing with itself.
+      figure (average annual turnover) because prompt rule 4 forbids computing.
+      **→ DONE in code, NOT YET VERIFIED END TO END (commit `c69a666`).** `derived_facts()`
+      now computes average annual turnover, combined monthly capacity and largest executed
+      order in plain Python and appends them as ordinary tagged facts, so the writer has
+      the number and stops arguing with itself. Arithmetic stays in code, never the model
+      (golden rule 3). 4 new unit tests cover it (average correct, citable/enforceable,
+      no average from a single year, capacity summed).
+      **Verification is blocked on model credit** (see BLOCKER at the top) — the regenerate
+      run produced templates in 1.2 s with 7× `402 Payment Required`.
+      One existing assertion changed: `test_fact_context_renders_tagged_lines` asserted
+      `len(tagged) == 2`; it now asserts `2 + len(derived_facts(...))`. The count stays
+      exact — it was made relational, not loosened.
 - [x] **Chat: real reasoning with page citations (D3 fixed).** `_compose_answer()` took a
       `gateway` and never used it. Now calls the `mid` role over the retrieved clauses,
       and **discards any answer that fails a ground-check** (§9 rule 1), falling back to the
