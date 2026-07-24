@@ -6,10 +6,12 @@ import uuid
 from bidproof_proposalwriter import (
     DEFAULT_SECTIONS,
     build_fact_context,
+    derived_facts,
     deterministic_section,
     enforce_source_tags,
     is_factual,
 )
+from bidproof_proposalwriter.writer import TAG_RE
 
 FACT_ID = uuid.uuid4()
 PRODUCT_ID = uuid.uuid4()
@@ -28,7 +30,9 @@ PRODUCTS = [{
 
 def test_fact_context_renders_tagged_lines():
     tagged = build_fact_context(FACTS, PRODUCTS)
-    assert len(tagged) == 2
+    # One line per input fact and product, then any computed (derived) facts,
+    # which are appended last and covered by their own tests below.
+    assert len(tagged) == 2 + len(derived_facts(FACTS, PRODUCTS))
     fact = tagged[0]
     assert fact.tag == f"[F:{FACT_ID.hex[:8]}]"
     assert "₹150.00 crore" in fact.text and "2024-25" in fact.text
@@ -89,3 +93,46 @@ def test_tender_dictated_sections_override_default():
     outputs = [deterministic_section(s, "T", "Co", tagged, []) for s in custom]
     assert len(outputs) == 2
     assert "declare" in outputs[1].lower()
+
+
+# --- Derived facts (US-09 / golden rule 3) ---------------------------------
+# A tender asks for "average annual turnover"; the capability DB stores one row
+# per year. BidProof computes the average in plain code — never the model — and
+# offers it as an ordinary tagged fact so the writer can cite it.
+
+THREE_YEARS = [
+    {"id": uuid.uuid4(), "fact_type": "turnover", "value_number": 1.2e9,
+     "fiscal_year": "2022-23"},
+    {"id": uuid.uuid4(), "fact_type": "turnover", "value_number": 1.35e9,
+     "fiscal_year": "2023-24"},
+    {"id": uuid.uuid4(), "fact_type": "turnover", "value_number": 1.5e9,
+     "fiscal_year": "2024-25"},
+]
+
+
+def test_average_turnover_is_computed_in_code_and_tagged():
+    derived = derived_facts(THREE_YEARS, [])
+    average = next(d for d in derived if "Average annual turnover" in d.text)
+    # (120 + 135 + 150) / 3 = 135 crore — arithmetic by code, not by a model.
+    assert "₹135.00 crore" in average.text
+    assert "over FY 2022-23 to FY 2024-25" in average.text
+    assert TAG_RE.fullmatch(average.tag), "derived facts must carry a real tag"
+
+
+def test_derived_facts_are_citable_like_any_other_fact():
+    tagged = build_fact_context(THREE_YEARS, PRODUCTS)
+    valid = {t.tag for t in tagged}
+    average = next(t for t in tagged if "Average annual turnover" in t.text)
+    sentence = f"Our average annual turnover is ₹135.00 crore. {average.tag}"
+    kept, dropped = enforce_source_tags(sentence, valid)
+    assert dropped == 0 and average.tag in kept
+
+
+def test_single_year_yields_no_average():
+    # One data point is not an average — do not invent one.
+    assert not [d for d in derived_facts(FACTS, []) if "Average" in d.text]
+
+
+def test_total_capacity_sums_product_lines():
+    total = next(d for d in derived_facts([], PRODUCTS) if "Combined" in d.text)
+    assert "500 units per month" in total.text

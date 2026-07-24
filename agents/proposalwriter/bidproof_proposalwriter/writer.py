@@ -6,6 +6,7 @@ sentences must end with a valid tag; `enforce_source_tags` DROPS any factual
 sentence whose tag is missing or unknown — the ground-check for prose.
 """
 
+import hashlib
 import re
 from dataclasses import dataclass
 
@@ -31,6 +32,65 @@ class TaggedFact:
 
 def _crore(value: float) -> str:
     return f"₹{value / 1e7:.2f} crore"
+
+
+def _derived_tag(name: str) -> str:
+    """A stable synthetic tag for a fact BidProof computed itself. Same shape as
+    a real fact tag so it validates, cites and fact-checks identically."""
+    return f"[F:{hashlib.sha256(name.encode()).hexdigest()[:8]}]"
+
+
+def derived_facts(facts: list[dict], products: list[dict]) -> list[TaggedFact]:
+    """Figures the tender asks for that are not stored as-is — averages, totals.
+
+    Tenders ask for *average annual turnover*; the capability DB stores one row
+    per year. Without this the writer is stuck: the requirement demands a number
+    the facts do not contain, and prompt rule 4 forbids it from doing the
+    arithmetic — so it stalls and narrates instead of writing (FINISH_STATUS D2).
+
+    Computing it here is also the correct architecture: **arithmetic is plain
+    deterministic code, never an LLM** (repo golden rule 3, SPEC §9 rule 2).
+    """
+    out: list[TaggedFact] = []
+
+    turnovers = [
+        float(f["value_number"]) for f in facts
+        if f.get("fact_type") == "turnover" and f.get("value_number") is not None
+    ]
+    if len(turnovers) >= 2:
+        years = sorted(
+            f.get("fiscal_year") for f in facts
+            if f.get("fact_type") == "turnover" and f.get("fiscal_year")
+        )
+        span = f" over FY {years[0]} to FY {years[-1]}" if years else ""
+        average = sum(turnovers) / len(turnovers)
+        out.append(TaggedFact(
+            tag=_derived_tag("avg_turnover"),
+            text=(f"Average annual turnover of {_crore(average)} across "
+                  f"{len(turnovers)} financial years{span}"),
+        ))
+
+    capacities = [
+        int(p["capacity_per_month"]) for p in products
+        if p.get("capacity_per_month") is not None
+    ]
+    if capacities:
+        out.append(TaggedFact(
+            tag=_derived_tag("total_capacity"),
+            text=(f"Combined manufacturing capacity of {sum(capacities)} units "
+                  f"per month across {len(capacities)} product lines"),
+        ))
+
+    orders = [
+        float(f["value_number"]) for f in facts
+        if f.get("fact_type") == "past_order" and f.get("value_number") is not None
+    ]
+    if orders:
+        out.append(TaggedFact(
+            tag=_derived_tag("largest_order"),
+            text=f"Largest single executed order of {_crore(max(orders))}",
+        ))
+    return out
 
 
 def build_fact_context(facts: list[dict], products: list[dict]) -> list[TaggedFact]:
@@ -70,6 +130,9 @@ def build_fact_context(facts: list[dict], products: list[dict]) -> list[TaggedFa
         if product.get("capacity_per_month") is not None:
             bits.append(f"capacity {product['capacity_per_month']} units/month")
         tagged.append(TaggedFact(tag=tag, text="; ".join(bits)))
+
+    # Figures the tender asks for that the DB does not store directly.
+    tagged.extend(derived_facts(facts, products))
     return tagged
 
 

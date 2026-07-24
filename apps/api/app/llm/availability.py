@@ -27,7 +27,14 @@ _status: dict | None = None
 
 
 async def probe_roles(timeout_s: float = 25.0) -> dict:
-    """Ask every role for one token. Returns per-role health + overall mode."""
+    """Ask every role for a reply. Returns per-role health + overall mode.
+
+    The budget below is deliberately close to what the writer actually asks
+    for. A tiny probe is dishonest: a provider checks whether the account can
+    afford `max_tokens` up front, so a 200-token probe still succeeds on an
+    exhausted balance while every real generation fails with 402 — the UI would
+    show "live" while the pipeline silently served templates.
+    """
     gateway = LLMGateway()
     roles: dict[str, dict] = {}
     try:
@@ -35,17 +42,22 @@ async def probe_roles(timeout_s: float = 25.0) -> dict:
             try:
                 async with asyncio.timeout(timeout_s):
                     response = await gateway.complete(
-                        role, messages=_PROBE, max_tokens=200
+                        role, messages=_PROBE, max_tokens=1600
                     )
                 # A probe only proves the role answers, so reasoning text counts here.
                 extract_text(response, allow_reasoning=True)
                 roles[role] = {"ok": True, "model": response.get("model"), "error": None}
             except Exception as exc:
-                roles[role] = {
-                    "ok": False,
-                    "model": None,
-                    "error": f"{type(exc).__name__}: {str(exc)[:160]}",
-                }
+                detail = f"{type(exc).__name__}: {str(exc)[:160]}"
+                # The most common real-world cause, named plainly so the UI can
+                # tell the operator what to actually do about it.
+                if "402" in str(exc) or "Payment Required" in str(exc):
+                    detail = (
+                        "no model credit — the provider refused the request "
+                        "(402 Payment Required). Top up the account behind the "
+                        "gateway; until then results come from templates."
+                    )
+                roles[role] = {"ok": False, "model": None, "error": detail}
     finally:
         await gateway.aclose()
 
