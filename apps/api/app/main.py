@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.routers import (
     admin,
     amendment,
+    analytics,
     capability,
     chat,
     checks,
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(submission.router)
     app.include_router(chat.router)
     app.include_router(admin.router)
+    app.include_router(analytics.router)
     app.include_router(modellab.router)
     app.include_router(onboarding.router)
     return app

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import App from "./App";
 import KitchenSink from "./KitchenSink";
+import Analytics from "./screens/Analytics";
+import Admin from "./screens/Admin";
 import { Workspace } from "./Workspace";
 import { ModelLab } from "./components/ModelLab";
 import { getOrgId, runModelLab, type ModelLabResult } from "./api";
@@ -70,14 +72,6 @@ function LabRoute() {
   return <ModelLab result={result} onRun={run} busy={busy} />;
 }
 
-function Placeholder({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="p-8">
-      <EmptyState title={title} body={body} icon="◭" />
-    </div>
-  );
-}
-
 export default function Root() {
   const { tender, select } = useCurrentTender();
   const [org, setOrg] = useState(getOrgId());
@@ -108,14 +102,8 @@ export default function Root() {
           <Route path="/proposal" element={<Navigate to="/workspace" replace />} />
           <Route path="/console" element={<Navigate to="/workspace" replace />} />
           <Route path="/model-lab" element={<LabRoute />} />
-          <Route
-            path="/analytics"
-            element={<Placeholder title="Analytics" body="Funnel, turnaround time, calibration and cost trend land in Task 5." />}
-          />
-          <Route
-            path="/admin"
-            element={<Placeholder title="Admin" body="Roles, prompt approvals, model config, audit log and scraper health land in Task 5." />}
-          />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="/onboarding" element={<App onOpenTender={select} startOnboarding />} />
           <Route path="/kitchen-sink" element={<KitchenSink />} />
           <Route path="*" element={<Navigate to="/" replace />} />
