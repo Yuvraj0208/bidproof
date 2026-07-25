@@ -283,9 +283,19 @@ log all say the same thing. Both matrix tests pass untouched.
       `strong: no model credit`.
 
 ### Task 6 — Real demo data
-- [ ] Seed script: tenders at several pipeline stages, capability DB, catalogue, library, worked
-      amendment, completed run with real console numbers
-- [ ] One-command reset, documented in README
+- [x] **One-command idempotent reset** — `infra/seed/seed_demo.py`, documented in the README.
+      Creates the org + radar profile (the piece whose absence broke reseeding three times),
+      capability DB, catalogue, library, and two committed tender fixtures which it pushes
+      through the real endpoints. `--no-pipeline` seeds without spending anything.
+      Also added the missing `if __name__ == "__main__"` guards to the two older seed
+      scripts — importing them used to execute them.
+- [x] **The failing tender** (`tender_hard.pdf`: ₹500 crore turnover, ISO 45001, 15-day
+      delivery). Verified live: **20 rules → 7 gaps, 5 needs_human, 2 complies, 2 risks,
+      and 6 pre-bid query letters drafted.** The winnable tender covers the happy path.
+      This closes the demo-data gap found earlier — the QuestionWriter half of the spine
+      was previously impossible to show.
+- [~] Worked amendment example — `corrigendum.pdf` exists as a fixture but the seed does not
+      yet apply it; still to wire in.
 
 ### Task 7 — Final QA
 - [ ] web tests, api tests, gold-set harness, attack suite — all results shown
