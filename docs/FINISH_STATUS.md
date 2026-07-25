@@ -22,6 +22,40 @@ The API must be restarted to pick up Python changes unless started with `--reloa
 
 ---
 
+## 🔴 OPEN REQUESTS from Yuvraj (2026-07-25) — do these next, in order
+
+**R0. "Clicking a tender does nothing / I get an error" — DIAGNOSED, environment not code.**
+`GET /radar` was returning **500 with `asyncpg TimeoutError`** — the Postgres container had
+stopped responding (Docker's daemon then hung entirely and needed relaunching). `/health`
+still answered 200 because it catches the DB error and reports `db: unreachable`, which is
+why the app *looked* alive while every screen failed.
+**Two real product fixes this exposes, both still TO DO:**
+  * `Workspace.load()` swallows every failure with `.catch(() => setX([]))`, so a dead
+    database renders as empty panels rather than "the database is unreachable". It must
+    surface the error like the Radar now does (error card + retry).
+  * `/health` should report `status: degraded` when `db != ok`, so the mode badge can warn
+    before the user clicks into a broken screen.
+
+**R1. Delete scraped tenders.** No delete endpoint exists. Needs `DELETE /tenders/{id}`,
+role-gated (bid_head/admin), written to the append-only audit log, plus bulk-delete from the
+Radar for scraped noise. Note: golden rule 8 forbids an *agent* from deleting; a named human
+deleting through the UI is a different thing, but it must be gated, audited and confirmed.
+
+**R2. Per-tender opt-in before any model call.** Right now **upload auto-runs
+extract + check** (I added that for convenience — it is wrong for cost control), and a bulk
+"process everything" is not what Yuvraj wants. Required: a scraped/uploaded tender sits in a
+`discovered` state doing nothing until a human presses **Process with AI** on that specific
+tender, with the estimated cost shown. Nothing may reach a model without that click.
+
+**R3. One place per tender for every human decision.** The human checkpoints (SPEC §7,
+checkpoints 0–6) are currently scattered across separate workspace tabs — triage resolve,
+rule accept/edit/reject, decision sign-off/override, section approvals, export override,
+submission checklist. Yuvraj cannot find where to act. Required: a single **Review** hub per
+tender listing every pending human action with its checkpoint number, what is being asked,
+and the control to do it inline.
+
+---
+
 ## ✅ Credit restored (2026-07-25) — spend discipline
 
 Wallet topped up to $5.00. Session spend so far ≈ $0.19 → **$4.81 remaining**. One full
