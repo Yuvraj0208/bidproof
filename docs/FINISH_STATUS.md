@@ -289,9 +289,27 @@ new hash in `infra/prompt_approvals.json`. The gate was not weakened.
       still cannot flip a verdict.
 - [x] Gold set + calibration: 6 passed.
 - [x] Unit suites: **154 API + 72 web**.
-- [ ] Full integration run (slow — Docling parses real PDFs)
-- [ ] Screen walk at 1080p and 1440p
-- [ ] Demo-readiness report
+- [x] **Full integration run: 263 passed, 0 failed** (~21 min).
+      The first full run surfaced **15 failures, all caused by my own R2 change**: those
+      tests uploaded a tender and went straight to `/check`, which used to work because
+      upload auto-extracted. Fixed by inserting the `/extract` step a human now performs —
+      20 call sites across 10 files. **No assertion was altered or weakened**; every
+      existing expectation about the `/check` response still holds. Commits `f3b9587`
+      (attack suite) and `9ad3090` (the other ten files).
+      Lesson worth keeping: a deliberate behaviour change ripples through integration
+      tests, and the unit suite will not catch it — the full run is not optional.
+- [x] Screen walk at **1920×1080 and 2560×1440**: no horizontal overflow at either, 240px
+      rail intact, Inter loaded, mode badge reads "Live models".
+- [x] **Demo-readiness report** — `docs/DEMO_READINESS.md`. Confirms the Week-3 spine end to
+      end and the §19 targets that are genuinely measured (₹0.037/tender vs <₹50; 7.3 min
+      upload→decision vs <10; attack suite 8/8; hallucination zero by structure), states
+      that **eligibility F1 is NOT measured**, and lists six weaknesses to volunteer before
+      the sponsor finds them.
+
+**Demo data restored after the test run** (`seed_demo.py`): org
+`2eb0b1ae-c315-4bf5-8be8-409813b9f553` — winnable tender 12 rules / 4 complies, hard tender
+13 rules / **4 gaps / 4 pre-bid letters**. Analytics reads it live: 14 DQ risks caught,
+₹0.0326 per decided tender.
 
 ### Task 4 — The interface
 - [x] **Tokens** — `src/index.css` `@theme` (Tailwind v4 is CSS-configured, there is no
