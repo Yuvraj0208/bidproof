@@ -23,3 +23,7 @@ class CandidateRule:
     status: str = "extracted"   # extracted | needs_human
     confidence: float = 0.0
     reason: str = ""
+    # The tender's own reference for this clause ("Clause 4.2"), when stated.
+    clause_ref: str | None = None
+    # Does it bind the bidder? mandatory | recommended | optional.
+    obligation: str = "mandatory"

@@ -496,8 +496,23 @@ export function Workspace({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs text-ink">
-                            {rule.key}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {rule.clause_ref && (
+                              <span className="shrink-0 rounded-[8px] bg-indigo-tint px-1.5 text-[11px] font-medium text-indigo">
+                                {rule.clause_ref}
+                              </span>
+                            )}
+                            <span className="truncate font-mono text-xs text-ink">
+                              {rule.key}
+                            </span>
+                            {rule.obligation !== "mandatory" && (
+                              <span
+                                className="shrink-0 text-[11px] text-ink-subtle"
+                                title="This clause does not strictly bind the bidder"
+                              >
+                                {rule.obligation}
+                              </span>
+                            )}
                           </span>
                           <ConfidenceChip
                             confidence={rule.confidence}

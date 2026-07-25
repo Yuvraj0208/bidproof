@@ -43,6 +43,8 @@ class RuleOut(BaseModel):
     key: str
     requirement_text: str
     value: str | None
+    clause_ref: str | None = None
+    obligation: str = "mandatory"
     el_id: uuid.UUID
     document_id: uuid.UUID
     page_no: int
@@ -101,6 +103,8 @@ async def list_rules(
                 key=rule.key,
                 requirement_text=rule.requirement_text,
                 value=rule.value_text,
+                clause_ref=rule.clause_ref,
+                obligation=rule.obligation,
                 el_id=rule.el_id,
                 document_id=element.document_id,
                 page_no=element.page_no,

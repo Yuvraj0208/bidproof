@@ -99,6 +99,9 @@ export interface Rule {
   key: string;
   requirement_text: string;
   value: string | null;
+  // The tender's own reference for the clause, and whether it binds (D7).
+  clause_ref: string | null;
+  obligation: "mandatory" | "recommended" | "optional";
   el_id: string;
   document_id: string;
   page_no: number;

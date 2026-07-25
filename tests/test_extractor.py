@@ -152,3 +152,98 @@ def test_still_split_after_votes_goes_to_human():
     resolved = resolve_vote(disputes[0][0], ["Rs 5,00,000", None, "Rs 7,00,000"])
     assert resolved.status == "needs_human"
     assert "human" in resolved.reason
+
+
+# --- Reading a rule as a rule, not as a page (FINISH_STATUS D7) ------------
+# requirement_text used to be the whole matched element, so a rule about the
+# EMD arrived carrying the entire page. These lock the narrowing, the clause
+# reference, the obligation type, and the restatement dedup.
+
+PAGE = (
+    "Section 1: Eligibility\n"
+    "TENDER NOTICE No. 42/2026\n"
+    "Supply of industrial storage racks to the Central Warehouse.\n"
+    "Earnest Money Deposit: Rs 2,50,000 payable at submission.\n"
+    "Minimum average annual turnover: Rs 5 crore over last 3 FY.\n"
+    "Bidder must hold valid ISO 9001 certification.\n"
+)
+
+
+def _page_elements(text: str = PAGE, n: int = 1) -> list[ElementRef]:
+    return [
+        ElementRef(el_id=f"el-{i}", page_no=i + 1, text=text) for i in range(n)
+    ]
+
+
+def test_requirement_text_is_the_clause_not_the_page():
+    rules = extract_pattern_rules(_page_elements())
+    emd = next(r for r in rules if r.key == "emd_amount")
+    assert "Earnest Money Deposit" in emd.requirement_text
+    # The page's other clauses must NOT be dragged along.
+    assert "storage racks" not in emd.requirement_text
+    assert "turnover" not in emd.requirement_text.lower()
+    assert len(emd.requirement_text) < 120
+
+
+def test_clause_reference_is_captured_when_the_tender_states_one():
+    rules = extract_pattern_rules(_page_elements())
+    assert all(r.clause_ref == "Section 1" for r in rules)
+
+
+def test_clause_reference_is_none_when_the_tender_states_none():
+    rules = extract_pattern_rules(
+        _page_elements("Delivery period: 90 days from purchase order date.")
+    )
+    assert rules and rules[0].clause_ref is None
+
+
+def test_obligation_reads_must_shall_should_and_may():
+    must = extract_pattern_rules(
+        _page_elements("Bidder must hold valid ISO 9001 certification.")
+    )
+    assert must[0].obligation == "mandatory"
+
+    should = extract_pattern_rules(
+        _page_elements("Bidder should hold valid ISO 14001 certification.")
+    )
+    assert should[0].obligation == "recommended"
+
+    may = extract_pattern_rules(
+        _page_elements("Bidder may hold valid ISO 27001 certification.")
+    )
+    assert may[0].obligation == "optional"
+
+
+def test_an_unmarked_clause_is_treated_as_mandatory():
+    # The safe reading for a tender: assuming optional could lose the bid.
+    rules = extract_pattern_rules(
+        _page_elements("Delivery period: 90 days from purchase order date.")
+    )
+    assert rules[0].obligation == "mandatory"
+
+
+def test_a_requirement_restated_on_every_page_is_one_rule():
+    # A tender repeats its terms; five pages of the same EMD is one rule.
+    rules = extract_pattern_rules(_page_elements(n=5))
+    assert len([r for r in rules if r.key == "emd_amount"]) == 1
+
+
+def test_the_same_key_with_a_different_value_is_kept_as_a_conflict():
+    # Two different EMD figures is a real conflict a human must see.
+    elements = [
+        ElementRef(el_id="a", page_no=1, text="Earnest Money Deposit: Rs 2,50,000."),
+        ElementRef(el_id="b", page_no=9, text="Earnest Money Deposit: Rs 5,00,000."),
+    ]
+    emds = [r for r in extract_pattern_rules(elements) if r.key == "emd_amount"]
+    assert len(emds) == 2
+
+
+def test_the_clause_keeps_the_figure_that_follows_its_colon():
+    # Narrowing must not cut at the colon: "Delivery period: 15 days from
+    # purchase order date." is ONE clause, and the figure is the point of it.
+    rules = extract_pattern_rules(
+        _page_elements("Delivery period: 15 days from purchase order date.")
+    )
+    delivery = next(r for r in rules if r.key == "delivery_days")
+    assert "15 days" in delivery.requirement_text
+    assert delivery.requirement_text.rstrip().endswith("date.")

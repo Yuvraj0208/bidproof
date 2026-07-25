@@ -6,7 +6,7 @@ element does not actually contain, is THROWN AWAY and counted — never
 down-scored, never repaired.
 """
 
-from bidproof_extractor.patterns import normalize_numeric
+from bidproof_extractor.patterns import clause_ref, normalize_numeric, obligation_of
 from bidproof_extractor.schema import AiRule
 from bidproof_extractor.types import CandidateRule, ElementRef
 
@@ -45,6 +45,10 @@ def ground_check(
                 source="ai",
                 confidence=CONF_AI_ONLY,
                 reason="model extraction, grounded to its cited element",
+                # The clause reference and obligation are read off the cited
+                # element by code, never taken from the model's word for it.
+                clause_ref=clause_ref(element.text),
+                obligation=obligation_of(rule.requirement_text),
             )
         )
     return kept, discarded

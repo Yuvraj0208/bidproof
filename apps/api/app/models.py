@@ -292,6 +292,11 @@ class Rule(Base):
     key: Mapped[str] = mapped_column(String, nullable=False)
     requirement_text: Mapped[str] = mapped_column(Text, nullable=False)
     value_text: Mapped[str | None] = mapped_column(String)
+    # The tender's own reference for the clause, and whether it binds (D7).
+    clause_ref: Mapped[str | None] = mapped_column(String)
+    obligation: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="mandatory"
+    )
     el_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("elements.el_id", ondelete="CASCADE"),

@@ -192,6 +192,8 @@ async def extract_rules(
                     key=rule.key,
                     requirement_text=rule.requirement_text,
                     value_text=rule.value,
+                    clause_ref=rule.clause_ref,
+                    obligation=rule.obligation,
                     el_id=uuid.UUID(rule.el_id),
                     source=rule.source,
                     status=rule.status,
