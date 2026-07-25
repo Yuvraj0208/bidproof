@@ -258,7 +258,40 @@ gate (SPEC §14). Followed the real flow — ran the gold set (passed), then re-
 new hash in `infra/prompt_approvals.json`. The gate was not weakened.
 
 ### Task 3 — Fix everything from the audit
-- [ ] Work down D1–D14 not already covered by Task 2; list anything unfixable with reason
+- [x] **D7 rule extraction — FIXED** (commit `0de562d`). `requirement_text` was
+      `element.text[:500]` — the WHOLE element, which for a parsed page block is the entire
+      page, so a rule about the EMD arrived as *"TENDER NOTICE No. 42/2026 Supply of
+      industrial storage racks… Earnest"*. Now:
+      * `clause_sentence()` narrows it to the clause the match sits in;
+      * `clause_ref()` captures the tender's own reference ("Section 1", "Clause 4.2");
+      * `obligation_of()` reads must/shall → mandatory, should → recommended, may →
+        optional, with **unmarked treated as mandatory** (the safe reading for a tender);
+      * restatements are deduped on (key, value) — a tender repeats its terms on every page
+        — while the same key with a DIFFERENT value is kept, because that is a real conflict
+        a human must see.
+      Migration `0020` adds `clause_ref` + `obligation`; both are surfaced on the rule row.
+      **Measured on the hard tender: 19 rules → 13, and the text is now
+      *"Earnest Money Deposit: Rs 25,00,000 payable at submission."*** 8 new unit tests,
+      including one for the bug my first attempt introduced (splitting on ":" stranded the
+      figure, leaving just the label "Delivery period:").
+- [~] D8 verdict reasons — milder than the audit claimed: reasons already cite both sides
+      ("Medium-duty long-span shelving ships in 30 days vs 90 required"). Still worth
+      enriching with the company record's provenance.
+- [ ] D11 risk register ₹ impact — still to do (needs model calls)
+- [x] D12 empty/loading/error states — done as part of Task 4
+- [x] D14 kitchen sink — done as part of Task 4
+
+### Task 7 — Final QA (in progress)
+- [x] **Attack suite back to 100%** (8/8). My R2 change (upload no longer auto-extracts)
+      broke two attack tests that uploaded and went straight to `/check`; they now opt in
+      via `/process` exactly as a human does. **The security assertions were not touched** —
+      injection still flagged, verdict still decided by arithmetic, poisoned corrigendum
+      still cannot flip a verdict.
+- [x] Gold set + calibration: 6 passed.
+- [x] Unit suites: **154 API + 72 web**.
+- [ ] Full integration run (slow — Docling parses real PDFs)
+- [ ] Screen walk at 1080p and 1440p
+- [ ] Demo-readiness report
 
 ### Task 4 — The interface
 - [x] **Tokens** — `src/index.css` `@theme` (Tailwind v4 is CSS-configured, there is no
