@@ -93,7 +93,7 @@ async def test_injection_pdf_is_flagged_but_does_not_change_verdicts(owner_conn)
             files={"file": ("t.pdf", INJECTION_PDF, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
-        await client.post(f"/tenders/{tender_id}/check")
+        await client.post(f"/tenders/{tender_id}/process")
 
         elements = (await client.get(f"/tenders/{tender_id}/elements")).json()
         flagged = [e for e in elements if e["guard_flagged"]]
@@ -121,7 +121,7 @@ async def test_poisoned_corrigendum_cannot_flip_a_verdict(owner_conn):
             files={"file": ("t.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
-        await client.post(f"/tenders/{tender_id}/check")
+        await client.post(f"/tenders/{tender_id}/process")
         before = {
             v["key"]: v["verdict"]
             for v in (await client.get(f"/tenders/{tender_id}/verdicts")).json()
