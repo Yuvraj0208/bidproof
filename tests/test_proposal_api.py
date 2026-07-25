@@ -18,6 +18,7 @@ FIFTEEN_MINUTES_MS = 15 * 60 * 1000
 
 async def go_tender(client):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     decision = (
         await client.post(f"/tenders/{tender_id}/decide",

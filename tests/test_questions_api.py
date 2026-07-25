@@ -27,6 +27,7 @@ async def test_failed_rule_yields_grounded_cited_letter(owner_conn):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         summary = (await client.post(f"/tenders/{tender_id}/questions")).json()
         letters = (await client.get(f"/tenders/{tender_id}/questions")).json()
@@ -49,6 +50,7 @@ async def test_passing_rules_produce_no_letter(owner_conn):
 
     async with client_for(app, org_id) as client:
         tender_id = await seed_and_upload(client)   # facts + cert + product
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         await client.post(f"/tenders/{tender_id}/questions")
         letters = (await client.get(f"/tenders/{tender_id}/questions")).json()
@@ -74,6 +76,7 @@ async def test_query_deadline_is_batched_onto_letters(owner_conn):
             {"c": datetime(2026, 9, 1, tzinfo=timezone.utc), "t": uuid.UUID(tender_id)},
         )
         await owner_conn.commit()
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         summary = (await client.post(f"/tenders/{tender_id}/questions")).json()
 
@@ -101,6 +104,7 @@ async def test_letters_respect_rls(owner_conn, app_engine):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         await client.post(f"/tenders/{tender_id}/questions")
 

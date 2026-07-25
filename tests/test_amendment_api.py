@@ -17,6 +17,7 @@ CORRIGENDUM = (Path(__file__).parent / "fixtures" / "corrigendum.pdf").read_byte
 
 async def prepared_tender(client):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     await client.post(f"/tenders/{tender_id}/decide", json={"tender_value_inr": 5e7})
     return tender_id

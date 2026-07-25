@@ -20,6 +20,7 @@ DOCX_ZIP_MAGIC = b"PK\x03\x04"
 
 async def go_and_draft(client):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     await client.post(f"/tenders/{tender_id}/decide", json={"tender_value_inr": 5e7})
     await client.post(f"/tenders/{tender_id}/proposal")
@@ -36,6 +37,7 @@ async def test_export_refuses_on_unaddressed_mandatory_clause(owner_conn):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
 
         preflight = (

@@ -28,6 +28,7 @@ class ContradictingWriter(FakeGateway):
 
 async def go_and_draft(client, gateway_cls=FakeGateway):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     decision = (
         await client.post(f"/tenders/{tender_id}/decide",

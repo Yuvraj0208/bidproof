@@ -69,6 +69,7 @@ async def test_checks_end_to_end_with_zero_model_calls(owner_conn):
 
     async with client_for(app, org_id) as client:
         tender_id = await seed_and_upload(client)
+        await client.post(f"/tenders/{tender_id}/extract")
         summary = (await client.post(f"/tenders/{tender_id}/check")).json()
         verdicts = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
         risks = (await client.get(f"/tenders/{tender_id}/risks")).json()
@@ -107,6 +108,7 @@ async def test_missing_capability_data_abstains_not_passes(owner_conn):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         verdicts = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
 
@@ -124,6 +126,7 @@ async def test_verdicts_and_risks_respect_rls(owner_conn, app_engine):
 
     async with client_for(app, org_a) as client:
         tender_id = await seed_and_upload(client)
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
 
     async with app_engine.connect() as conn:

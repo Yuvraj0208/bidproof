@@ -77,6 +77,7 @@ async def test_fresh_org_onboards_end_to_end_and_is_usable(owner_conn):
         up = await c.post("/tenders/upload",
                           files={"file": ("t.pdf", DIGITAL, "application/pdf")})
         tender_id = up.json()["tender_id"]
+        await c.post(f"/tenders/{tender_id}/extract")
         await c.post(f"/tenders/{tender_id}/check")
         verdicts = (await c.get(f"/tenders/{tender_id}/verdicts")).json()
         by_key = {v["key"]: v for v in verdicts}

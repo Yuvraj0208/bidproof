@@ -14,6 +14,7 @@ pytestmark = pytest.mark.integration
 
 async def decided_tender(client):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     decision = (
         await client.post(f"/tenders/{tender_id}/decide",
@@ -125,6 +126,7 @@ async def test_hard_gate_no_on_failed_mandatory_rule(owner_conn):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         # required_standard is GAP (no cert on file) → eligibility family?
         # required_standard is technical; min_turnover is needs_human (not gap).
@@ -134,6 +136,7 @@ async def test_hard_gate_no_on_failed_mandatory_rule(owner_conn):
             "value_number": 1_000_000, "unit": "inr",
             "source": "synthetic demo data", "verified_at": "2026-07-01",
         })
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         decision = (
             await client.post(f"/tenders/{tender_id}/decide",

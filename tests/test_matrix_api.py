@@ -20,6 +20,7 @@ async def test_matrix_export_is_valid_xlsx_with_complete_rows(owner_conn):
 
     async with client_for(app, org_id) as client:
         tender_id = await seed_and_upload(client)
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         verdicts = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
         export = await client.get(f"/tenders/{tender_id}/matrix.xlsx")
@@ -50,6 +51,7 @@ async def test_matrix_marks_needs_human_rows_queued(owner_conn):
             files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
         await client.post(f"/tenders/{tender_id}/check")
         export = await client.get(f"/tenders/{tender_id}/matrix.xlsx")
 

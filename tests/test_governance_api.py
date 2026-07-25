@@ -24,6 +24,7 @@ def role_client(app, org_id, role):
 
 async def decided_tender(client):
     tender_id = await seed_and_upload(client)
+    await client.post(f"/tenders/{tender_id}/extract")
     await client.post(f"/tenders/{tender_id}/check")
     await client.post(f"/tenders/{tender_id}/decide", json={"tender_value_inr": 5e7})
     return tender_id
@@ -124,6 +125,7 @@ async def test_export_override_requires_bid_head(owner_conn):
             files={"file": ("t.pdf", DIGITAL, "application/pdf")},
         )
         tender_id = response.json()["tender_id"]
+        await setup.post(f"/tenders/{tender_id}/extract")
         await setup.post(f"/tenders/{tender_id}/check")
 
     async with role_client(app, org_id, "bid_executive") as exec_:
