@@ -191,13 +191,41 @@ new hash in `infra/prompt_approvals.json`. The gate was not weakened.
 - [ ] Work down D1–D14 not already covered by Task 2; list anything unfixable with reason
 
 ### Task 4 — The interface
-- [ ] Tokens (Tailwind config + CSS vars), Inter, tabular numerals, 8px grid, shadows, focus ring
-- [ ] AppShell: indigo sidebar (ten screens), top bar with tender context + countdown + search
-- [ ] Primitives + `/kitchen-sink`: Card, PageHeader, DataTable, StatCallout, CountdownChip,
-      VerdictBadge, RiskTag, ConfidenceChip (restyle only), EmptyState, SkeletonLoader, Toast, Modal, Tooltip
-- [ ] Retrofit screens in spine order: Radar → Workspace → Matrix → Decision Room → Agent Console
-      → Proposal Studio → Model Lab → remaining panels
-- [ ] Loading / empty / error state on every screen
+- [x] **Tokens** — `src/index.css` `@theme` (Tailwind v4 is CSS-configured, there is no
+      `tailwind.config.js`). Indigo #1E2170 / #2A2D8F / #EDEEFA, ink #1B1D3A, surface
+      #F6F7FD, amber #D97706, green #1F8A4C, red #C23A34. Inter self-hosted via
+      `@fontsource` (no CDN — the demo box may be offline). Tabular numerals applied to
+      every table and `[data-numeric]`. Radius 12 (8/16 relatives), three shadow levels,
+      one focus ring that inverts on the indigo rail, `prefers-reduced-motion` respected.
+      Verified in-browser: body `rgb(246,247,253)`, ink `rgb(27,29,58)`, rail `rgb(30,33,112)`.
+- [x] **AppShell** — dark indigo rail with the wordmark, **all ten SPEC §17 screens**
+      (tender-scoped ones disabled until a tender is open), org name pinned at the bottom;
+      top bar carries tender context + `CountdownChip` + search + the mode badge.
+- [x] **Router** — fixes D6. `react-router-dom`; every screen has a URL, back button works,
+      `/workspace/:tenderId` deep-links. Screens were previously swapped with `useState`
+      booleans.
+- [x] **Mode badge (closes D9's UI half)** — `ModeBadge` polls `/health/models` and shows
+      Live / Degraded / Templates-only. Verified live during the credit outage: it reads
+      **"◐ Degraded"** with the tooltip *"strong: no model credit — the provider refused the
+      request (402 Payment Required). Top up the account…"*. A template answer can no
+      longer masquerade as a model answer.
+- [x] **Primitives + `/kitchen-sink`** (fixes D14) — Card, PageHeader, Button, StatCallout,
+      EmptyState, SkeletonLoader, FieldLabel, DataTable (sticky header, sortable, zebra,
+      hover, roving keyboard focus, density toggle), CountdownChip, VerdictBadge, RiskTag,
+      Pill, `formatInr` (lakh/crore), Toast, Modal, Tooltip. ConfidenceChip restyled, API
+      untouched. **18 new tests** covering countdown thresholds, colour-blind-safety,
+      numeric sort, keyboard nav and the empty state.
+- [~] **Retrofit** — Tender Radar done (skeletons, empty state that teaches, error card with
+      retry, countdowns, fit %, toasts on upload/scrape). Remaining: Workspace, Matrix,
+      Decision Room, Agent Console, Proposal Studio, Model Lab, and the side panels.
+- [~] Loading / empty / error states — done on Radar; still to do on the other screens.
+
+**One deliberate inconsistency to flag:** `ConfidenceChip.test.tsx` asserts literal palette
+classes (`bg-emerald-500`, `bg-amber-400`, `bg-red-500`). The Task-4 brief says the retrofit
+must leave existing tests untouched, so the chip's 8px dot keeps those exact classes while
+its border/background/text are fully tokenised. The dot is therefore marginally brighter
+than the token greens/ambers/reds. Say the word and I'll move the dot onto the tokens and
+update that one assertion.
 
 ### Task 5 — Missing screens
 - [ ] Analytics (funnel, TAT, DQ-risks, coverage-accuracy, calibration, cost trend, KPI vs baseline)
