@@ -139,6 +139,22 @@ and with no gaps the QuestionWriter has nothing to draft — half the demo spine
 It prints the organisation id at the end; paste that into the web app's **Organisation id**
 box. Add `--no-pipeline` to seed the data without making any model calls.
 
+**For the Godrej pilot**, seed their real public data instead of the synthetic company:
+
+```bash
+uv run --project apps/api python infra/seed/seed_godrej_public.py
+```
+
+Every figure carries the public page it came from in its `source` column — group turnover
+(FY2024-25 ₹18,970 cr, published as provisional), ISO 9001/14001/45001 + GreenPro, and the
+eleven named racking systems with their published load ratings and EN 15512 / FEM / RMI
+compliance.
+
+What that script deliberately does **not** fill in: certificate expiry dates, product lead
+times, monthly capacity, and past contract values — none of which are public. The checker
+therefore returns `needs_human` for those criteria instead of a number nobody can defend.
+Load them through the onboarding wizard once Godrej supplies them (SPEC §21).
+
 ---
 
 ## Turning on the AI models
