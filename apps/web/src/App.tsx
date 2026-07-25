@@ -7,13 +7,13 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   createOrg,
+  deleteTender,
   fetchRadar,
   getOrgId,
   getRole,
   ROLES,
-  runCheck,
+  processTender,
   runDiscovery,
-  runExtraction,
   saveBranding,
   saveOnboardingProfile,
   setOrgId,
@@ -27,7 +27,7 @@ import {
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { CountdownChip, Pill } from "./ui/chips";
-import { useToast } from "./ui/overlays";
+import { Modal, useToast } from "./ui/overlays";
 import {
   Button,
   Card,
@@ -62,6 +62,7 @@ export default function App({
   const [busy, setBusy] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [confirmDelete, setConfirmDelete] = useState<RadarCard | null>(null);
 
   useEffect(() => {
     if (!org) {
@@ -84,18 +85,62 @@ export default function App({
     navigate(`/workspace/${card.tender_id}`);
   };
 
+  // Upload parses and triages only. Reading it with a model costs money, so
+  // that is a separate, explicit press on this tender (FINISH_STATUS R2).
   const onUpload = async (file: File) => {
     setBusy(`Uploading ${file.name}…`);
     try {
-      const { tender_id } = await uploadTender(file);
-      setBusy("Extracting rules…");
-      await runExtraction(tender_id);
-      setBusy("Checking against your capability…");
-      await runCheck(tender_id);
-      push(`${file.name} read and checked.`, "success");
-      open({ tender_id, title: file.name });
+      await uploadTender(file);
+      push(
+        `${file.name} uploaded and parsed. Press "Process with AI" on the card when you want it read.`,
+        "success",
+      );
+      setRefresh((n) => n + 1);
     } catch (e) {
       push(`Upload failed: ${String(e)}`, "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onProcess = async (card: RadarCard) => {
+    setBusy(`Reading "${card.title.slice(0, 40)}" with AI…`);
+    try {
+      const result = await processTender(card.tender_id);
+      push(
+        `${result.rules} rules extracted · ${result.model_calls} model call(s).`,
+        "success",
+      );
+      open({ tender_id: card.tender_id, title: card.title });
+    } catch (e) {
+      const message = String(e);
+      push(
+        message.includes("409")
+          ? "This tender has no PDF — portal listings often carry metadata only. Upload the document to read it."
+          : `Processing failed: ${message}`,
+        "warning",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onDelete = async () => {
+    if (!confirmDelete) return;
+    const card = confirmDelete;
+    setConfirmDelete(null);
+    setBusy(`Deleting "${card.title.slice(0, 40)}"…`);
+    try {
+      await deleteTender(card.tender_id);
+      push("Tender deleted. The action is in the audit log.", "success");
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      push(
+        String(e).includes("403")
+          ? "Deleting a tender needs the bid_head role — switch role above."
+          : `Delete failed: ${String(e)}`,
+        "danger",
+      );
     } finally {
       setBusy(null);
     }
@@ -278,6 +323,25 @@ export default function App({
         />
       )}
 
+      <Modal
+        open={confirmDelete !== null}
+        title="Delete this tender?"
+        onClose={() => setConfirmDelete(null)}
+        footer={<>
+          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button variant="danger" onClick={onDelete}>Delete permanently</Button>
+        </>}
+      >
+        <p className="text-sm text-ink">
+          <span className="font-medium">{confirmDelete?.title}</span>
+        </p>
+        <p className="mt-2 text-sm text-ink-muted">
+          This removes the tender and everything derived from it — rules,
+          verdicts, decision and proposal. It cannot be undone. The deletion is
+          recorded in the audit log against your role.
+        </p>
+      </Modal>
+
       <div className="space-y-3">
         {!loading &&
           cards.map((card) => (
@@ -323,6 +387,32 @@ export default function App({
                     ))}
                   </ul>
                 )}
+
+                {/* Per-tender control: nothing here has cost money yet. */}
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={busy !== null}
+                    onClick={() => onProcess(card)}
+                    title="Extract the rules and check them — this is the step that calls a model"
+                  >
+                    ⚡ Process with AI
+                  </Button>
+                  <Button size="sm" onClick={() => open(card)}>
+                    Open
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto text-danger"
+                    disabled={busy !== null}
+                    onClick={() => setConfirmDelete(card)}
+                    title="Delete this tender (bid_head only, audited)"
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}

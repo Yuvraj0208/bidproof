@@ -61,12 +61,15 @@ import {
   type DecisionData,
 } from "./components/DecisionRoom";
 import { LearnedNote } from "./components/LearnedNote";
+import { ReviewHub, pendingReviews } from "./components/ReviewHub";
+import { Button } from "./ui/primitives";
 import { MatrixTable } from "./components/MatrixTable";
 import { PdfProof, type Highlight } from "./components/PdfProof";
 
 const FAMILY_ORDER = ["eligibility", "technical", "commercial", "legal", "submission"];
 
 type Tab =
+  | "review"
   | "rules"
   | "matrix"
   | "decision"
@@ -86,7 +89,8 @@ export function Workspace({
   title: string;
   onBack: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("rules");
+  const [tab, setTab] = useState<Tab>("review");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [role, setRoleState] = useState<RoleName>(getRole());
   const [rules, setRules] = useState<Rule[]>([]);
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
@@ -112,7 +116,13 @@ export function Workspace({
   const [busy, setBusy] = useState(false);
 
   const load = () => {
-    fetchRules(tenderId).then(setRules).catch(() => setRules([]));
+    // A failure here used to be swallowed into empty panels, so a dead database
+    // looked like "an empty tender" (FINISH_STATUS R0). Rules is the canonical
+    // read: if IT fails, something is actually wrong and we say so.
+    setLoadError(null);
+    fetchRules(tenderId)
+      .then((r) => { setRules(r); setLoadError(null); })
+      .catch((e) => { setRules([]); setLoadError(String(e)); });
     fetchVerdicts(tenderId).then(setVerdicts).catch(() => setVerdicts([]));
     fetchBrief(tenderId)
       .then((brief) => {
@@ -248,6 +258,18 @@ export function Workspace({
 
   const families = FAMILY_ORDER.filter((f) => rules.some((r) => r.family === f));
 
+  // Every outstanding human decision, derived from state already loaded.
+  const reviewItems = pendingReviews({
+    rulesNeedingHuman: rules.filter((r) => r.status === "needs_human").length,
+    verdictsNeedingHuman: verdicts.filter((v) => v.verdict === "needs_human").length,
+    decisionStatus: decision?.status ?? null,
+    decisionRecommendation: decision?.recommendation ?? null,
+    proposalSections: proposal?.sections ?? null,
+    exportBlockers: blockers?.length ?? 0,
+    checklistRequired: checklist?.required_count ?? 0,
+    checklistTicked: checklist?.ticked_count ?? 0,
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-3 border-b bg-white px-4 py-2">
@@ -261,6 +283,7 @@ export function Workspace({
         <nav className="ml-4 flex gap-1">
           {(
             [
+              "review",
               "rules",
               "matrix",
               "decision",
@@ -281,7 +304,9 @@ export function Workspace({
                     : "text-ink-muted hover:text-ink"
                 }`}
               >
-                {t === "rules"
+                {t === "review"
+                  ? `Review${reviewItems.length ? ` (${reviewItems.length})` : ""}`
+                  : t === "rules"
                   ? `Rules (${rules.length})`
                   : t === "matrix"
                     ? `Matrix (${verdicts.length})`
@@ -337,7 +362,25 @@ export function Workspace({
         </div>
       </header>
 
-      {tab === "chat" ? (
+      {loadError && (
+        <div className="border-b border-danger/25 bg-danger-tint px-4 py-3">
+          <div className="text-sm font-medium text-danger">
+            Could not load this tender
+          </div>
+          <div className="mt-1 text-xs text-danger/80">{loadError}</div>
+          <div className="mt-1 text-xs text-danger/80">
+            If this mentions a timeout or a connection, the database is not
+            answering — restart the Postgres container and retry.
+          </div>
+          <Button size="sm" className="mt-2" onClick={load}>Retry</Button>
+        </div>
+      )}
+
+      {tab === "review" ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
+          <ReviewHub items={reviewItems} onGoTo={(next) => setTab(next as Tab)} />
+        </div>
+      ) : tab === "chat" ? (
         <div className="min-h-0 flex-1 overflow-hidden bg-surface">
           <ChatPanel turns={chatTurns} onAsk={handleAsk} busy={asking} />
         </div>

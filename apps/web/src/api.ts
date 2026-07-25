@@ -423,6 +423,34 @@ export interface DiscoveryRunResult {
 export const runDiscovery = () =>
   request<DiscoveryRunResult>(`/discovery/run`, { method: "POST" });
 
+// The ONE route by which a tender reaches a model. Upload and discovery stop
+// after parsing; a human opts each tender in, so portal noise costs nothing.
+export const processTender = (tenderId: string) =>
+  request<{
+    tender_id: string;
+    rules: number;
+    verdicts: Record<string, number>;
+    model_calls: number;
+  }>(`/tenders/${tenderId}/process`, { method: "POST" });
+
+// Human-only, bid_head-gated, audited. Irreversible — always confirm first.
+export const deleteTender = (tenderId: string) =>
+  request<{ deleted: string; title: string }>(`/tenders/${tenderId}`, {
+    method: "DELETE",
+  });
+
+export interface ApiHealth {
+  status: "ok" | "degraded";
+  db: string;
+  detail: string | null;
+}
+
+export async function fetchHealth(): Promise<ApiHealth> {
+  const response = await fetch(`${API_BASE}/health`);
+  if (!response.ok) throw new Error(`${response.status}`);
+  return response.json();
+}
+
 export const fetchRules = (tenderId: string) =>
   request<Rule[]>(`/tenders/${tenderId}/rules`);
 
