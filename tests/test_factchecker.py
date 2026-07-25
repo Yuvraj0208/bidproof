@@ -58,3 +58,34 @@ def test_verified_percentage_and_no_claims_is_none():
     )
     assert verified_percentage(claims) == 50.0
     assert verified_percentage([]) is None
+
+
+# --- Multi-source sentences (SPEC §5.7) ------------------------------------
+# A bid sentence often cites several facts at once. Verifying only the first
+# tag marked the remaining figures as contradicted, which blocked export on a
+# correct sentence. Every number must still trace to a cited fact.
+
+MULTI_FACTS = {
+    "[F:aaaaaaaa]": "Annual turnover of ₹120.00 crore in FY 2022-23",
+    "[F:bbbbbbbb]": "Annual turnover of ₹135.00 crore in FY 2023-24",
+    "[F:cccccccc]": "Annual turnover of ₹150.00 crore in FY 2024-25",
+}
+
+
+def test_a_sentence_citing_several_facts_verifies_against_all_of_them():
+    sentence = (
+        "This comprises ₹120.00 crore in FY 2022-23 [F:aaaaaaaa], "
+        "₹135.00 crore in FY 2023-24 [F:bbbbbbbb], and "
+        "₹150.00 crore in FY 2024-25 [F:cccccccc]."
+    )
+    claims = check_text(sentence, MULTI_FACTS)
+    assert [c.status for c in claims] == ["verified"]
+
+
+def test_a_number_in_no_cited_fact_is_still_contradicted():
+    # Rigour is unchanged: ₹999 crore appears in none of the cited facts.
+    sentence = (
+        "Turnover was ₹120.00 crore [F:aaaaaaaa] and ₹999.00 crore [F:bbbbbbbb]."
+    )
+    claims = check_text(sentence, MULTI_FACTS)
+    assert [c.status for c in claims] == ["contradicted"]

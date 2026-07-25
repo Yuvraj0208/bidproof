@@ -65,13 +65,21 @@ def check_text(
             claims.append(Claim(sentence, None, CANNOT_VERIFY))
             continue
 
+        # A sentence may cite SEVERAL facts — "₹120 cr in FY23 [F:a], ₹135 cr
+        # in FY24 [F:b], ₹150 cr in FY25 [F:c]" is one sentence with three
+        # sources. Checking only the first tag marked the other two figures as
+        # contradicted, which blocked export on a perfectly good sentence. The
+        # evidence for the sentence is the union of every fact it cites; each
+        # number must still appear in one of them, so nothing gets weaker.
         tag = tags[0]
-        fact = facts_by_tag.get(tag)
-        if fact is None:
+        known = [facts_by_tag[t] for t in tags if t in facts_by_tag]
+        if not known:
             claims.append(Claim(sentence, tag, CANNOT_VERIFY))
             continue
 
-        fact_numbers = set(_number_tokens(fact))
+        fact_numbers: set[str] = set()
+        for fact in known:
+            fact_numbers |= set(_number_tokens(fact))
         if all(token in fact_numbers for token in numbers):
             claims.append(Claim(sentence, tag, VERIFIED))
         else:
