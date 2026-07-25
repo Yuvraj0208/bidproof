@@ -22,37 +22,40 @@ The API must be restarted to pick up Python changes unless started with `--reloa
 
 ---
 
-## 🔴 OPEN REQUESTS from Yuvraj (2026-07-25) — do these next, in order
+## ✅ REQUESTS R0–R3 — DONE (2026-07-25), verified live
 
 **R0. "Clicking a tender does nothing / I get an error" — DIAGNOSED, environment not code.**
 `GET /radar` was returning **500 with `asyncpg TimeoutError`** — the Postgres container had
 stopped responding (Docker's daemon then hung entirely and needed relaunching). `/health`
 still answered 200 because it catches the DB error and reports `db: unreachable`, which is
 why the app *looked* alive while every screen failed.
-**Two real product fixes this exposes, both still TO DO:**
-  * `Workspace.load()` swallows every failure with `.catch(() => setX([]))`, so a dead
-    database renders as empty panels rather than "the database is unreachable". It must
-    surface the error like the Radar now does (error card + retry).
-  * `/health` should report `status: degraded` when `db != ok`, so the mode badge can warn
-    before the user clicks into a broken screen.
+**Both product fixes DONE** (commits `44a7755`, `1b6a3c1`):
+  * `Workspace.load()` no longer swallows failures — a failed rules read shows an error card
+    naming the likely cause ("restart the Postgres container") with a Retry button.
+  * `/health` now returns `status: degraded` when the DB is down, instead of `ok`.
 
-**R1. Delete scraped tenders.** No delete endpoint exists. Needs `DELETE /tenders/{id}`,
-role-gated (bid_head/admin), written to the append-only audit log, plus bulk-delete from the
-Radar for scraped noise. Note: golden rule 8 forbids an *agent* from deleting; a named human
-deleting through the UI is a different thing, but it must be gated, audited and confirmed.
+**R1. Delete scraped tenders — DONE.** `DELETE /tenders/{id}`, gated to bid_head+ (403 for
+bid_executive), audit row written BEFORE the cascade so it survives. Radar cards carry a
+Delete button behind a confirm modal that spells out what is lost.
+**Verified live:** deleted a tender from the UI → gone from the list, `tender_deleted by
+bid_head` in the audit log.
 
-**R2. Per-tender opt-in before any model call.** Right now **upload auto-runs
-extract + check** (I added that for convenience — it is wrong for cost control), and a bulk
-"process everything" is not what Yuvraj wants. Required: a scraped/uploaded tender sits in a
-`discovered` state doing nothing until a human presses **Process with AI** on that specific
-tender, with the estimated cost shown. Nothing may reach a model without that click.
+**R2. Per-tender opt-in before any model call — DONE.** Upload now runs parse + triage only
+(both free, both local); the extract/check background tasks were removed. `POST
+/tenders/{id}/process` is the ONLY route to a model, gated to bid_executive+ and audited as
+`tender_processed_with_ai`. Radar cards carry **⚡ Process with AI**.
+**Verified live:** two tenders uploaded → **0 rules each, no model call**; pressing process
+on one → 19 rules, 6 gaps. A metadata-only portal tender returns a 409 that explains itself
+rather than failing. 4 integration tests lock this in, including
+`test_upload_alone_never_reaches_a_model` which asserts the fake gateway saw **no calls**.
 
-**R3. One place per tender for every human decision.** The human checkpoints (SPEC §7,
-checkpoints 0–6) are currently scattered across separate workspace tabs — triage resolve,
-rule accept/edit/reject, decision sign-off/override, section approvals, export override,
-submission checklist. Yuvraj cannot find where to act. Required: a single **Review** hub per
-tender listing every pending human action with its checkpoint number, what is being asked,
-and the control to do it inline.
+**R3. One place per tender for every human decision — DONE.** New **Review** tab, now the
+FIRST tab in the workspace, showing a numbered card per outstanding checkpoint (0,2,3,4,5,6)
+with what is being asked, how many items, whether it blocks submission, and a button that
+jumps to the control. `pendingReviews()` is a pure function over state the workspace already
+loads — it adds no requests and cannot disagree with the tabs. 7 tests.
+**Verified live:** the hard tender opens on "Review (2)" → checkpoint 3 (7 verdicts) and
+checkpoint 6 (5 blockers), both marked blocking; "Open matrix" routes correctly.
 
 ---
 
