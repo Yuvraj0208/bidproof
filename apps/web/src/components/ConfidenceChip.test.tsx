@@ -11,13 +11,13 @@ describe("ConfidenceChip", () => {
     const chip = screen.getByTitle("all checks pass");
     expect(chip).toHaveAttribute("data-band", "green");
     expect(chip).toHaveTextContent("90%");
-    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-emerald-500");
+    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-success");
   });
 
   it("renders the yellow band", () => {
     render(<ConfidenceChip confidence={0.55} band="yellow" reason="partly known" />);
     expect(screen.getByTitle("partly known")).toHaveAttribute("data-band", "yellow");
-    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-amber-400");
+    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-warning");
   });
 
   it("renders the red band", () => {
@@ -26,7 +26,7 @@ describe("ConfidenceChip", () => {
       "data-band",
       "red",
     );
-    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-red-500");
+    expect(screen.getByTestId("chip-dot")).toHaveClass("bg-danger");
   });
 
   it("exposes the why on hover via the title attribute", () => {

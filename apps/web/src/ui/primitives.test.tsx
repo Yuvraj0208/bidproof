@@ -53,7 +53,7 @@ describe("VerdictBadge", () => {
   it("carries a word and a glyph, so colour is never the only signal", () => {
     render(<VerdictBadge verdict="complies" />);
     const badge = screen.getByTestId("verdict-badge");
-    expect(badge).toHaveTextContent("Complies");
+    expect(badge).toHaveTextContent("complies");
     expect(badge.textContent).toMatch(/[✓◐✕?–]/);
   });
 

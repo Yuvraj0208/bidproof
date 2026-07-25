@@ -19,23 +19,23 @@ export function QuestionsPanel({
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
       <div className="flex items-center gap-3">
-        <h2 className="text-sm font-semibold text-slate-800">
+        <h2 className="text-sm font-semibold text-ink">
           Pre-bid question pack
         </h2>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-ink-subtle">
           drafts only — a human sends each letter
         </span>
         <button
           onClick={onGenerate}
           disabled={busy}
-          className="ml-auto rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="ml-auto rounded-[8px] border border-hairline px-2 py-1 text-sm text-ink-muted hover:bg-surface disabled:opacity-50"
         >
           {busy ? "Drafting…" : "Draft questions"}
         </button>
       </div>
 
       {letters.length === 0 && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-muted">
           No queries drafted. When a mandatory rule fails, a letter is drafted
           here asking the buyer to relax it.
         </p>
@@ -45,34 +45,34 @@ export function QuestionsPanel({
         <article
           key={letter.id}
           data-testid="query-letter"
-          className="rounded-lg border bg-white p-4"
+          className="rounded-[12px] border border-hairline bg-white p-4"
         >
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs text-slate-700">
+            <span className="font-mono text-xs text-ink">
               {letter.rule_key}
             </span>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-ink-subtle">
               cites p.{letter.page_no}
             </span>
             {letter.query_deadline && (
-              <span className="text-[11px] text-amber-700">
+              <span className="text-[11px] text-warning">
                 before {letter.query_deadline}
               </span>
             )}
-            <span className="ml-auto rounded bg-slate-100 px-1.5 text-[11px] text-slate-500">
+            <span className="ml-auto rounded-[8px] bg-surface px-1.5 text-[11px] text-ink-muted">
               {letter.status}
             </span>
             <button
               onClick={() => copy(letter)}
-              className="rounded border px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
+              className="rounded-[8px] border border-hairline px-2 py-0.5 text-xs text-ink-muted hover:bg-surface"
             >
               Copy
             </button>
           </div>
-          <p className="mt-1 text-sm font-medium text-slate-800">
+          <p className="mt-1 text-sm font-medium text-ink">
             {letter.subject}
           </p>
-          <pre className="mt-2 whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700">
+          <pre className="mt-2 whitespace-pre-wrap rounded-[8px] bg-surface p-3 text-xs text-ink">
             {letter.body}
           </pre>
         </article>

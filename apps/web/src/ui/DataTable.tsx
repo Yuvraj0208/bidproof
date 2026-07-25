@@ -28,6 +28,7 @@ export function DataTable<Row>({
   empty,
   caption,
   density: densityProp,
+  rowTestId = "data-row",
 }: {
   columns: Column<Row>[];
   rows: Row[];
@@ -37,6 +38,8 @@ export function DataTable<Row>({
   empty?: ReactNode;
   caption?: string;
   density?: "comfortable" | "compact";
+  /** Screens keep their own row hook (e.g. "matrix-row") for their tests. */
+  rowTestId?: string;
 }) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
   const [density, setDensity] = useState<"comfortable" | "compact">(
@@ -148,7 +151,7 @@ export function DataTable<Row>({
             {sorted.map((row, index) => (
               <tr
                 key={rowKey(row)}
-                data-testid="data-row"
+                data-testid={rowTestId}
                 tabIndex={index === focused ? 0 : -1}
                 onFocus={() => setFocused(index)}
                 onClick={() => onRowActivate?.(row)}

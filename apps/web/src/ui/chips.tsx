@@ -4,43 +4,26 @@
 import type { ReactNode } from "react";
 
 /** VerdictBadge — the compliance matrix's verdict cell. */
-const VERDICTS: Record<
-  string,
-  { label: string; glyph: string; className: string }
-> = {
-  complies: {
-    label: "Complies",
-    glyph: "✓",
-    className: "bg-success-tint text-success border-success/25",
-  },
-  partial: {
-    label: "Partial",
-    glyph: "◐",
-    className: "bg-warning-tint text-warning border-warning/25",
-  },
-  gap: {
-    label: "Gap",
-    glyph: "✕",
-    className: "bg-danger-tint text-danger border-danger/25",
-  },
-  needs_human: {
-    label: "Needs human",
-    glyph: "?",
-    className: "bg-danger-tint text-danger border-danger/25",
-  },
+// The label is always the API's own verdict word (underscores softened to
+// spaces) rather than a prettier synonym: the screen, the exported .xlsx and
+// the audit log must all say the same thing, so a reviewer can match them.
+const VERDICTS: Record<string, { glyph: string; className: string }> = {
+  complies: { glyph: "✓", className: "bg-success-tint text-success border-success/25" },
+  partial: { glyph: "◐", className: "bg-warning-tint text-warning border-warning/25" },
+  gap: { glyph: "✕", className: "bg-danger-tint text-danger border-danger/25" },
+  needs_human: { glyph: "?", className: "bg-danger-tint text-danger border-danger/25" },
   not_applicable: {
-    label: "N/A",
     glyph: "–",
     className: "bg-indigo-tint text-ink-muted border-hairline",
   },
 };
 
 export function VerdictBadge({ verdict }: { verdict: string }) {
-  const v = VERDICTS[verdict] ?? {
-    label: verdict.replace(/_/g, " "),
+  const style = VERDICTS[verdict] ?? {
     glyph: "•",
     className: "bg-indigo-tint text-ink-muted border-hairline",
   };
+  const v = { ...style, label: verdict.replace(/_/g, " ") };
   return (
     <span
       data-testid="verdict-badge"

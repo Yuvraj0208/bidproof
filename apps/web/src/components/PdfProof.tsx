@@ -113,10 +113,10 @@ export function PdfProof({
   }, [highlight]);
 
   if (error)
-    return <p className="p-4 text-sm text-red-600">PDF failed to load: {error}</p>;
+    return <p className="p-4 text-sm text-danger">PDF failed to load: {error}</p>;
 
   return (
-    <div className="h-full overflow-auto bg-slate-100 p-4">
+    <div className="h-full overflow-auto bg-surface p-4">
       {Array.from({ length: Math.max(pageCount, 1) }, (_, i) => i + 1).map((n) => (
         <div
           key={n}
@@ -130,7 +130,7 @@ export function PdfProof({
           {highlight?.page_no === n && (
             <div
               data-testid="proof-highlight"
-              className="absolute border-2 border-amber-500 bg-amber-300/30"
+              className="absolute border-2 border-warning bg-warning/25"
               style={highlightRect(highlight.bbox, SCALE)}
             />
           )}

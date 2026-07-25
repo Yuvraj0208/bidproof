@@ -249,15 +249,15 @@ export function Workspace({
   const families = FAMILY_ORDER.filter((f) => rules.some((r) => r.family === f));
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-3 border-b bg-white px-4 py-2">
         <button
           onClick={onBack}
-          className="rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50"
+          className="rounded-[8px] border border-hairline px-2 py-1 text-sm text-ink-muted hover:bg-surface"
         >
           ← Radar
         </button>
-        <h1 className="truncate text-sm font-semibold text-slate-800">{title}</h1>
+        <h1 className="truncate text-sm font-semibold text-ink">{title}</h1>
         <nav className="ml-4 flex gap-1">
           {(
             [
@@ -275,10 +275,10 @@ export function Workspace({
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`rounded px-2 py-1 text-sm ${
+                className={`rounded-[8px] px-2 py-1 text-sm ${
                   tab === t
-                    ? "bg-indigo-50 font-medium text-indigo-800"
-                    : "text-slate-500 hover:text-slate-700"
+                    ? "bg-indigo-tint font-medium text-indigo"
+                    : "text-ink-muted hover:text-ink"
                 }`}
               >
                 {t === "rules"
@@ -305,7 +305,7 @@ export function Workspace({
           {tab === "matrix" && verdicts.length > 0 && (
             <button
               onClick={() => downloadMatrix(tenderId)}
-              className="rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50"
+              className="rounded-[8px] border border-hairline px-2 py-1 text-sm text-ink-muted hover:bg-surface"
             >
               Export .xlsx
             </button>
@@ -318,7 +318,7 @@ export function Workspace({
               setRoleState(next);
               setRole(next);
             }}
-            className="rounded border px-2 py-1 text-xs"
+            className="rounded-[8px] border border-hairline px-2 py-1 text-xs"
             title="Acting role — gates sensitive actions (Checkpoints 4–6)"
           >
             {ROLES.map((r) => (
@@ -330,7 +330,7 @@ export function Workspace({
           <button
             onClick={recheck}
             disabled={busy}
-            className="rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-[8px] border border-hairline px-2 py-1 text-sm text-ink-muted hover:bg-surface disabled:opacity-50"
           >
             {busy ? "Working…" : "Re-run"}
           </button>
@@ -338,11 +338,11 @@ export function Workspace({
       </header>
 
       {tab === "chat" ? (
-        <div className="min-h-0 flex-1 overflow-hidden bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-hidden bg-surface">
           <ChatPanel turns={chatTurns} onAsk={handleAsk} busy={asking} />
         </div>
       ) : tab === "checklist" ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
           <ChecklistPanel
             checklist={checklist}
             name={checklistName}
@@ -353,7 +353,7 @@ export function Workspace({
           />
         </div>
       ) : tab === "proposal" ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
           {proposal && (
             <div className="mx-auto max-w-2xl px-6 pt-6">
               <ExportBar
@@ -372,7 +372,7 @@ export function Workspace({
           />
         </div>
       ) : tab === "questions" ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
           <QuestionsPanel
             letters={letters}
             onGenerate={handleDraftQuestions}
@@ -380,7 +380,7 @@ export function Workspace({
           />
         </div>
       ) : tab === "amendments" ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
           <AmendmentsPanel
             amendments={amendments}
             onAmend={handleAmend}
@@ -388,7 +388,7 @@ export function Workspace({
           />
         </div>
       ) : tab === "console" ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-slate-50">
+        <div className="min-h-0 flex-1 overflow-auto bg-surface">
           <AgentConsole
             runs={agentRuns}
             totals={consoleTotals}
@@ -402,7 +402,7 @@ export function Workspace({
             <div className="p-6">
               <button
                 onClick={decideNow}
-                className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white"
+                className="rounded-[8px] bg-indigo px-3 py-1.5 text-sm font-medium text-white"
               >
                 Compute EV
               </button>
@@ -425,13 +425,13 @@ export function Workspace({
           ) : (
             <>
               {rules.length === 0 && (
-                <p className="p-4 text-sm text-slate-500">
+                <p className="p-4 text-sm text-ink-muted">
                   No rules yet — upload finished parsing? Hit re-run.
                 </p>
               )}
               {families.map((family) => (
                 <section key={family}>
-                  <h2 className="sticky top-0 border-b bg-slate-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <h2 className="sticky top-0 border-b bg-surface px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                     {family}
                   </h2>
                   {rules
@@ -448,12 +448,12 @@ export function Workspace({
                             document_id: rule.document_id,
                           });
                         }}
-                        className={`block w-full border-b px-3 py-2 text-left hover:bg-amber-50 ${
-                          selectedRule === rule.rule_id ? "bg-amber-50" : ""
+                        className={`block w-full border-b px-3 py-2 text-left hover:bg-warning-tint ${
+                          selectedRule === rule.rule_id ? "bg-warning-tint" : ""
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs text-slate-700">
+                          <span className="font-mono text-xs text-ink">
                             {rule.key}
                           </span>
                           <ConfidenceChip
@@ -463,19 +463,19 @@ export function Workspace({
                           />
                         </div>
                         {rule.value && (
-                          <div className="mt-0.5 text-sm font-medium text-slate-900">
+                          <div className="mt-0.5 text-sm font-medium text-ink">
                             {rule.value}
                           </div>
                         )}
-                        <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">
+                        <div className="mt-0.5 line-clamp-2 text-xs text-ink-muted">
                           {rule.requirement_text}
                         </div>
                         {rule.learned && <LearnedNote learned={rule.learned} />}
-                        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-ink-subtle">
                           <span>p.{rule.page_no}</span>
                           <span>{rule.source}</span>
                           {rule.status === "needs_human" && (
-                            <span className="rounded bg-red-100 px-1 text-red-700">
+                            <span className="rounded-[8px] bg-danger-tint px-1 text-danger">
                               needs human
                             </span>
                           )}

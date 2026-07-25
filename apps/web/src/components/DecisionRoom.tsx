@@ -3,6 +3,8 @@
 // with a written reason. No approve-all, no auto-pass.
 import { useState } from "react";
 import { ConfidenceChip } from "./ConfidenceChip";
+import { RiskTag } from "../ui/chips";
+import { Card, EmptyState, FieldLabel, StatCallout } from "../ui/primitives";
 
 export interface EvTerm {
   key: string;
@@ -34,9 +36,9 @@ const inr = (value: number) =>
   `${value < 0 ? "−" : ""}₹${(Math.abs(value) / 1e5).toFixed(2)} lakh`;
 
 const REC_STYLE: Record<string, string> = {
-  go: "bg-emerald-100 text-emerald-800",
-  no_go: "bg-red-100 text-red-800",
-  needs_human: "bg-amber-100 text-amber-800",
+  go: "bg-success-tint text-success",
+  no_go: "bg-danger-tint text-danger",
+  needs_human: "bg-warning-tint text-warning",
 };
 
 export function DecisionRoom({
@@ -61,40 +63,52 @@ export function DecisionRoom({
 
   if (!decision) {
     return (
-      <p className="p-6 text-sm text-slate-500">
-        No decision yet — run the check, then compute the EV.
-      </p>
+      <div className="p-6">
+        <EmptyState
+          title="No decision yet"
+          body="Run the compliance check, then compute the expected value. The maths is shown term by term so it can be argued with."
+          icon="₹"
+        />
+      </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <section className="flex items-center gap-3">
-        <span
-          data-testid="recommendation"
-          className={`rounded px-3 py-1 text-sm font-semibold uppercase ${REC_STYLE[decision.recommendation] ?? ""}`}
-        >
-          {decision.recommendation.replace("_", " ")}
-        </span>
-        {decision.ev_inr != null && (
-          <span className="text-lg font-semibold text-slate-900">
-            EV {inr(decision.ev_inr)}
+      <Card className="border-indigo/15 bg-indigo-tint/40">
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            data-testid="recommendation"
+            className={`rounded-[8px] px-3 py-1 text-sm font-semibold uppercase ${REC_STYLE[decision.recommendation] ?? ""}`}
+          >
+            {decision.recommendation.replace("_", " ")}
           </span>
+          <ConfidenceChip
+            confidence={decision.confidence}
+            band={decision.band}
+            reason={decision.reason}
+          />
+          <span className="ml-auto text-xs text-ink-subtle">
+            {decision.status === "pending_signoff"
+              ? "awaiting sign-off (checkpoint 4)"
+              : `${decision.status} by ${decision.signed_off_by}`}
+          </span>
+        </div>
+        {decision.ev_inr != null && (
+          <div className="mt-4">
+            <StatCallout
+              label="Expected value"
+              value={inr(decision.ev_inr)}
+              hint={decision.reason}
+              tone={decision.ev_inr >= 0 ? "success" : "danger"}
+              size="lg"
+            />
+          </div>
         )}
-        <ConfidenceChip
-          confidence={decision.confidence}
-          band={decision.band}
-          reason={decision.reason}
-        />
-        <span className="ml-auto text-xs text-slate-400">
-          {decision.status === "pending_signoff"
-            ? "awaiting sign-off (checkpoint 4)"
-            : `${decision.status} by ${decision.signed_off_by}`}
-        </span>
-      </section>
+      </Card>
 
       {decision.gate_failed.length > 0 && (
-        <section className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <section className="rounded-[12px] border border-danger/25 bg-danger-tint p-3 text-sm text-danger">
           Hard gate: mandatory eligibility failed —{" "}
           {decision.gate_failed.map((g) => g.key).join(", ")}. EV not computed.
         </section>
@@ -104,12 +118,12 @@ export function DecisionRoom({
         <table className="w-full text-sm" data-testid="ev-terms">
           <tbody>
             {decision.terms.map((term) => (
-              <tr key={term.key} className="border-b align-top">
+              <tr key={term.key} className="border-b border-hairline align-top">
                 <td className="py-2 pr-3">
-                  <div className="font-medium text-slate-800">{term.label}</div>
-                  <div className="text-xs text-slate-500">{term.formula}</div>
+                  <div className="font-medium text-ink">{term.label}</div>
+                  <div className="text-xs text-ink-muted">{term.formula}</div>
                 </td>
-                <td className="py-2 text-right font-mono text-sm">
+                <td data-numeric className="py-2 text-right text-sm font-medium">
                   {inr(term.value_inr)}
                 </td>
               </tr>
@@ -117,7 +131,7 @@ export function DecisionRoom({
             {decision.ev_inr != null && (
               <tr className="font-semibold">
                 <td className="py-2">Expected value</td>
-                <td className="py-2 text-right font-mono">{inr(decision.ev_inr)}</td>
+                <td data-numeric className="py-2 text-right">{inr(decision.ev_inr)}</td>
               </tr>
             )}
           </tbody>
@@ -126,22 +140,16 @@ export function DecisionRoom({
 
       {risks.length > 0 && (
         <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Top risks
-          </h2>
-          <ul className="space-y-1 text-sm">
+          <FieldLabel>Risk register</FieldLabel>
+          <ul className="mt-2 space-y-2 text-sm">
             {risks.map((risk) => (
-              <li key={risk.code} className="flex gap-2">
-                <span
-                  className={`rounded px-1.5 text-xs ${
-                    risk.severity === "high"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {risk.severity}
-                </span>
-                <span className="text-slate-600">{risk.message}</span>
+              <li key={risk.code} className="flex flex-wrap items-center gap-2">
+                <RiskTag
+                  label={risk.code.replace(/_/g, " ")}
+                  impactInr={(risk as { impact_inr?: number | null }).impact_inr ?? null}
+                  severity={risk.severity === "high" ? "high" : "medium"}
+                />
+                <span className="text-ink-muted">{risk.message}</span>
               </li>
             ))}
           </ul>
@@ -149,14 +157,14 @@ export function DecisionRoom({
       )}
 
       {decision.status === "pending_signoff" && (
-        <section className="space-y-2 rounded border bg-slate-50 p-4">
-          <label className="block text-xs font-medium text-slate-600">
+        <section className="space-y-2 rounded-[12px] border border-hairline bg-white p-4 shadow-card">
+          <label className="block text-xs font-medium text-ink-muted">
             Checkpoint 4 — a named human signs this decision
           </label>
           {!canSignOff && roleNote && (
             <p
               data-testid="role-gate-note"
-              className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
+              className="rounded-[8px] bg-warning-tint px-2 py-1 text-xs text-warning"
             >
               {roleNote}
             </p>
@@ -166,14 +174,14 @@ export function DecisionRoom({
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
             disabled={!canSignOff}
-            className="w-full rounded border px-2 py-1 text-sm disabled:bg-slate-50"
+            className="w-full rounded-[8px] border border-hairline px-2 py-1 text-sm disabled:bg-surface"
           />
           <div className="flex gap-2">
             <button
               data-testid="signoff-button"
               disabled={!canSignOff || name.trim().length < 2}
               onClick={() => onSignOff(name.trim())}
-              className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="rounded-[8px] bg-indigo px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-active disabled:opacity-40"
             >
               Sign off {decision.recommendation.replace("_", " ")}
             </button>
@@ -184,7 +192,7 @@ export function DecisionRoom({
               onChange={(e) => setOverrideReason(e.target.value)}
               placeholder="Override reason (required, logged)"
               disabled={!canSignOff}
-              className="w-full rounded border px-2 py-1 text-sm disabled:bg-slate-50"
+              className="w-full rounded-[8px] border border-hairline px-2 py-1 text-sm disabled:bg-surface"
             />
             <button
               data-testid="override-button"
@@ -196,7 +204,7 @@ export function DecisionRoom({
                   overrideReason.trim(),
                 )
               }
-              className="mt-1 rounded border px-3 py-1.5 text-sm text-slate-600 disabled:opacity-40"
+              className="mt-1 rounded-[8px] border border-hairline px-3 py-1.5 text-sm text-ink-muted transition-colors duration-150 hover:bg-indigo-tint disabled:opacity-40"
             >
               Override to {decision.recommendation === "go" ? "NO GO" : "GO"}
             </button>

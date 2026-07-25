@@ -40,7 +40,7 @@ export function AgentConsole({
 }) {
   if (runs.length === 0) {
     return (
-      <p className="p-6 text-sm text-slate-500">
+      <p className="p-6 text-sm text-ink-muted">
         No agent runs recorded yet for this tender.
       </p>
     );
@@ -50,14 +50,15 @@ export function AgentConsole({
       <div className="mb-4 flex items-center gap-3">
         <span
           data-testid="totals-line"
-          className="rounded bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-900"
+          data-numeric
+          className="rounded-[8px] bg-indigo-tint px-3 py-1.5 text-sm font-medium text-indigo"
         >
           {totals ? totalsLine(totals) : ""}
         </span>
         <button
           onClick={onReplay}
           disabled={replaying}
-          className="ml-auto rounded border px-2 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="ml-auto rounded-[8px] border border-hairline px-2 py-1 text-sm text-ink-muted transition-colors duration-150 hover:bg-indigo-tint disabled:opacity-50"
         >
           {replaying ? "Replaying…" : "Replay run"}
         </button>
@@ -67,33 +68,33 @@ export function AgentConsole({
           <li
             key={run.id}
             data-testid="agent-run"
-            className="rounded border bg-white p-3"
+            className="rounded-[12px] border border-hairline bg-white p-3 shadow-card transition-shadow duration-150 hover:shadow-overlay"
           >
             <div className="flex items-center gap-2 text-sm">
-              <span className="font-mono font-medium text-slate-800">
+              <span className="font-mono font-medium text-ink">
                 {run.agent}
               </span>
               {run.model_role && (
-                <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-600">
+                <span className="rounded-[8px] bg-surface px-1.5 text-xs text-ink-muted">
                   role: {run.model_role}
                 </span>
               )}
               {run.prompt_version && (
-                <span className="rounded bg-slate-100 px-1.5 text-xs text-slate-600">
+                <span className="rounded-[8px] bg-surface px-1.5 text-xs text-ink-muted">
                   {run.prompt_version}
                 </span>
               )}
               {run.status !== "ok" && (
-                <span className="rounded bg-red-100 px-1.5 text-xs text-red-700">
+                <span className="rounded-[8px] bg-danger-tint px-1.5 text-xs text-danger">
                   {run.status}
                 </span>
               )}
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="ml-auto text-xs text-ink-subtle">
                 {run.tokens_in + run.tokens_out} tok · ₹{run.cost_inr.toFixed(2)} ·{" "}
                 {run.duration_ms} ms
               </span>
             </div>
-            <div className="mt-1 truncate font-mono text-[11px] text-slate-400">
+            <div className="mt-1 truncate font-mono text-[11px] text-ink-subtle">
               {JSON.stringify(run.meta)}
             </div>
           </li>

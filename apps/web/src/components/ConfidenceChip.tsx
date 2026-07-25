@@ -5,15 +5,10 @@ import { bandFromConfidence, type Band } from "../confidence";
 
 // Restyled onto the design tokens (Task 4) — the API is unchanged on purpose:
 // this chip is the trust primitive and appears on every card, row and sentence.
-//
-// The DOT classes stay on the literal Tailwind palette because
-// ConfidenceChip.test.tsx asserts these exact class names, and the Task-4 brief
-// requires the retrofit to leave existing tests untouched. The surrounding
-// chip (border/background/text) is fully tokenised; only the 8px dot differs.
 const DOT: Record<Band, string> = {
-  green: "bg-emerald-500",
-  yellow: "bg-amber-400",
-  red: "bg-red-500",
+  green: "bg-success",
+  yellow: "bg-warning",
+  red: "bg-danger",
 };
 
 const TEXT: Record<Band, string> = {

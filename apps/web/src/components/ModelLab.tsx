@@ -5,9 +5,9 @@ import type { LeaderboardRow, ModelLabResult } from "../api";
 
 function bar(pct: number, color: string) {
   return (
-    <div className="h-2 w-full rounded bg-slate-100">
+    <div className="h-2 w-full rounded-[8px] bg-surface">
       <div
-        className={`h-2 rounded ${color}`}
+        className={`h-2 rounded-[8px] ${color}`}
         style={{ width: `${Math.round(pct * 100)}%` }}
       />
     </div>
@@ -28,9 +28,9 @@ export function ModelLab({
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="mb-4 flex items-center gap-3">
-        <h1 className="text-lg font-semibold text-indigo-900">Model Lab</h1>
+        <h1 className="text-xl font-semibold tracking-[-0.01em] text-ink">Model Lab</h1>
         {result && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-ink-subtle">
             same gold set ({result.gold_tenders} tenders) · role: {result.role}
             {result.simulated ? " · simulated profiles" : ""}
           </span>
@@ -38,14 +38,14 @@ export function ModelLab({
         <button
           onClick={onRun}
           disabled={busy}
-          className="ml-auto rounded bg-indigo-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
+          className="ml-auto rounded-[8px] bg-indigo px-3 py-1.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-active disabled:opacity-50"
         >
           {busy ? "Running…" : "Run leaderboard"}
         </button>
       </div>
 
       {!result && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-ink-muted">
           Run the same gold set through every model and compare accuracy, speed,
           and cost. The winner can be adopted as a config change.
         </p>
@@ -54,15 +54,15 @@ export function ModelLab({
       {result && (
         <>
           {winner && (
-            <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <div className="mb-3 rounded-[12px] border border-success/25 bg-success-tint p-3 text-sm text-success">
               Winner by F1: <strong>{winner.model}</strong> — F1{" "}
               {winner.f1_overall} · hallucination {winner.hallucination_rate} ·
               ₹{winner.cost_per_tender_inr}/tender
             </div>
           )}
-          <div className="overflow-x-auto rounded-lg border bg-white">
+          <div className="overflow-x-auto rounded-[12px] border border-hairline bg-white shadow-card">
             <table className="w-full text-left text-xs" data-testid="leaderboard">
-              <thead className="bg-slate-50 text-slate-500">
+              <thead className="bg-surface text-ink-subtle">
                 <tr>
                   <th className="px-3 py-2">Model</th>
                   <th className="px-3 py-2">F1 (overall)</th>
@@ -76,14 +76,14 @@ export function ModelLab({
               </thead>
               <tbody>
                 {result.leaderboard.map((row) => (
-                  <tr key={row.model} data-testid="lab-row" className="border-t">
+                  <tr key={row.model} data-testid="lab-row" className="border-t border-hairline">
                     <td className="px-3 py-2">
-                      <div className="font-medium text-slate-800">{row.model}</div>
-                      <div className="text-[11px] text-slate-400">{row.kind}</div>
+                      <div className="font-medium text-ink">{row.model}</div>
+                      <div className="text-[11px] text-ink-subtle">{row.kind}</div>
                     </td>
                     <td className="px-3 py-2">
                       <div className="mb-1 font-mono">{row.f1_overall}</div>
-                      {bar(row.f1_overall, "bg-emerald-500")}
+                      {bar(row.f1_overall, "bg-success")}
                     </td>
                     <td className="px-3 py-2 font-mono">{row.f1_eligibility}</td>
                     <td className="px-3 py-2 font-mono">
@@ -99,7 +99,7 @@ export function ModelLab({
             </table>
           </div>
           {result.simulated && (
-            <p className="mt-2 text-[11px] text-slate-400">
+            <p className="mt-2 text-[11px] text-ink-subtle">
               Profiles are simulated until API keys are configured; the scoring
               is real and swapping in a live model is a config change.
             </p>
