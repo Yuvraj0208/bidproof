@@ -1,17 +1,27 @@
-// Route table + the shell that wraps every screen.
+// Route table. Two worlds: the public landing/onboarding pages, and the signed-in
+// application inside the AppShell.
 //
-// Before this, screens were swapped with useState booleans inside App.tsx —
-// no URLs, no back button, no deep links (FINISH_STATUS D6). Every SPEC §17
-// screen now has an address.
+// Signing in means choosing a company. That is a WORKSPACE SELECTOR, not
+// authentication — there is no password and the API still trusts the X-Org-Id
+// header. Real sign-in (SSO/OIDC per SPEC §11.4) has to land before this is put
+// on a public URL; until then it is a local-demo convenience.
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import App from "./App";
 import KitchenSink from "./KitchenSink";
+import Landing from "./screens/Landing";
+import NewCompany from "./screens/NewCompany";
 import Analytics from "./screens/Analytics";
 import Admin from "./screens/Admin";
 import { Workspace } from "./Workspace";
 import { ModelLab } from "./components/ModelLab";
-import { getOrgId, runModelLab, type ModelLabResult } from "./api";
+import {
+  getSession,
+  runModelLab,
+  signOut as clearSession,
+  type ModelLabResult,
+  type OrgSummary,
+} from "./api";
 import { AppShell } from "./ui/AppShell";
 import { EmptyState, Button } from "./ui/primitives";
 import { ToastHost } from "./ui/overlays";
@@ -50,7 +60,11 @@ function WorkspaceRoute({
         <EmptyState
           title="No tender open"
           body="Pick a tender from the radar to read it, check it, and decide on it."
-          action={<Button variant="primary" onClick={() => navigate("/")}>Go to Tender Radar</Button>}
+          action={
+            <Button variant="primary" onClick={() => navigate("/app")}>
+              Go to Tender Radar
+            </Button>
+          }
         />
       </div>
     );
@@ -72,43 +86,94 @@ function LabRoute() {
   return <ModelLab result={result} onRun={run} busy={busy} />;
 }
 
-export default function Root() {
+/** Everything inside the shell requires a chosen company. */
+function Signed({
+  session,
+  onSignOut,
+}: {
+  session: OrgSummary;
+  onSignOut: () => void;
+}) {
   const { tender, select } = useCurrentTender();
-  const [org, setOrg] = useState(getOrgId());
 
-  // Keep the shell's org label in step with the radar's org input.
+  return (
+    <AppShell
+      org={session}
+      tenderTitle={tender?.title ?? null}
+      onSignOut={onSignOut}
+    >
+      <Routes>
+        <Route path="/app" element={<App onOpenTender={select} />} />
+        <Route
+          path="/workspace"
+          element={<WorkspaceRoute tender={tender} onBack={() => select(null)} />}
+        />
+        <Route
+          path="/workspace/:tenderId"
+          element={<WorkspaceRoute tender={tender} onBack={() => select(null)} />}
+        />
+        {/* The matrix, decision, proposal and console are tabs inside the
+            workspace today; their routes deep-link into it. */}
+        <Route path="/matrix" element={<Navigate to="/workspace" replace />} />
+        <Route path="/decision" element={<Navigate to="/workspace" replace />} />
+        <Route path="/proposal" element={<Navigate to="/workspace" replace />} />
+        <Route path="/console" element={<Navigate to="/workspace" replace />} />
+        <Route path="/model-lab" element={<LabRoute />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/kitchen-sink" element={<KitchenSink />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
+      </Routes>
+    </AppShell>
+  );
+}
+
+export default function Root() {
+  const [session, setSession] = useState<OrgSummary | null>(getSession);
+
+  // Another tab signing in or out should not leave this one stale.
   useEffect(() => {
-    const timer = window.setInterval(() => setOrg(getOrgId()), 1000);
-    return () => window.clearInterval(timer);
+    const sync = () => setSession(getSession());
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
+
+  const signOut = () => {
+    clearSession();
+    setSession(null);
+  };
 
   return (
     <ToastHost>
-      <AppShell orgName={org || "No organisation"} tenderTitle={tender?.title ?? null}>
-        <Routes>
-          <Route path="/" element={<App onOpenTender={select} />} />
-          <Route
-            path="/workspace"
-            element={<WorkspaceRoute tender={tender} onBack={() => select(null)} />}
-          />
-          <Route
-            path="/workspace/:tenderId"
-            element={<WorkspaceRoute tender={tender} onBack={() => select(null)} />}
-          />
-          {/* The matrix, decision, proposal and console are tabs inside the
-              workspace today; their routes deep-link into it. */}
-          <Route path="/matrix" element={<Navigate to="/workspace" replace />} />
-          <Route path="/decision" element={<Navigate to="/workspace" replace />} />
-          <Route path="/proposal" element={<Navigate to="/workspace" replace />} />
-          <Route path="/console" element={<Navigate to="/workspace" replace />} />
-          <Route path="/model-lab" element={<LabRoute />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/onboarding" element={<App onOpenTender={select} startOnboarding />} />
-          <Route path="/kitchen-sink" element={<KitchenSink />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AppShell>
+      <Routes>
+        {/* Public */}
+        <Route
+          path="/"
+          element={
+            session ? (
+              <Navigate to="/app" replace />
+            ) : (
+              <Landing onSignedIn={() => setSession(getSession())} />
+            )
+          }
+        />
+        <Route
+          path="/new-company"
+          element={<NewCompany onSignedIn={() => setSession(getSession())} />}
+        />
+
+        {/* Signed in — everything else lives inside the shell */}
+        <Route
+          path="*"
+          element={
+            session ? (
+              <Signed session={session} onSignOut={signOut} />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+      </Routes>
     </ToastHost>
   );
 }

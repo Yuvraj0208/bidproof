@@ -10,19 +10,15 @@ import {
   deleteTender,
   fetchRadar,
   getOrgId,
-  getRole,
-  ROLES,
   processTender,
   runDiscovery,
   saveBranding,
   saveOnboardingProfile,
   setOrgId,
-  setRole,
   uploadFactsCsv,
   uploadProductsCsv,
   uploadTender,
   type RadarCard,
-  type RoleName,
 } from "./api";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { OnboardingWizard } from "./components/OnboardingWizard";
@@ -53,7 +49,6 @@ export default function App({
   const { push } = useToast();
 
   const [org, setOrg] = useState(getOrgId());
-  const [role, setRoleState] = useState<RoleName>(getRole());
   const [tab, setTab] = useState<string>("in_our_lane");
   const [cards, setCards] = useState<RadarCard[]>([]);
   const [loading, setLoading] = useState(false);
@@ -223,38 +218,6 @@ export default function App({
               disabled={!org || busy !== null}
             >
               ↑ Upload tender
-            </Button>
-          </>
-        }
-        meta={
-          <>
-            <input
-              value={org}
-              onChange={(e) => {
-                setOrg(e.target.value);
-                setOrgId(e.target.value);
-              }}
-              placeholder="Organisation id"
-              aria-label="Organisation id"
-              className="w-80 rounded-[8px] border border-hairline bg-white px-2 py-1 font-mono text-xs text-ink"
-            />
-            <select
-              data-testid="role-select"
-              value={role}
-              onChange={(e) => {
-                const next = e.target.value as RoleName;
-                setRoleState(next);
-                setRole(next);
-              }}
-              title="Acting role — gates sensitive actions"
-              className="rounded-[8px] border border-hairline bg-white px-2 py-1 text-xs text-ink"
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-            <Button size="sm" variant="ghost" onClick={() => setOnboarding(true)}>
-              + New company
             </Button>
           </>
         }

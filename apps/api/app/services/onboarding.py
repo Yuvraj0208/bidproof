@@ -197,3 +197,33 @@ async def status(org_id: uuid.UUID) -> dict | None:
         "onboarded": org.onboarded_at is not None,
         "ready": steps["facts"] and steps["products"] and steps["profile"],
     }
+
+
+async def list_orgs() -> list[dict]:
+    """Every organisation, for the sign-in company picker.
+
+    Runs on the owner engine: choosing a workspace happens before any org
+    context exists, so an RLS-scoped session cannot answer it. Only identity and
+    branding are returned — never anything a tenant owns.
+    """
+    engine = create_async_engine(get_settings().database_url_owner)
+    try:
+        async with engine.connect() as conn:
+            rows = (
+                await conn.execute(
+                    text("SELECT id, name, slug, branding, onboarded_at "
+                         "FROM organizations ORDER BY name")
+                )
+            ).all()
+    finally:
+        await engine.dispose()
+    return [
+        {
+            "org_id": row.id,
+            "name": row.name,
+            "slug": row.slug,
+            "branding": row.branding or {},
+            "onboarded": row.onboarded_at is not None,
+        }
+        for row in rows
+    ]

@@ -42,6 +42,29 @@ async def create_org(body: CreateOrgIn) -> dict:
     return {"org_id": str(org_id), "name": body.name, "slug": body.slug}
 
 
+class OrgSummary(BaseModel):
+    org_id: uuid.UUID
+    name: str
+    slug: str
+    branding: dict
+    onboarded: bool
+
+
+@router.get("/organizations", response_model=list[OrgSummary])
+async def list_organizations() -> list[OrgSummary]:
+    """The workspaces available to sign in to.
+
+    Deliberately open, like `POST /onboarding/org`: a person has to pick a
+    company BEFORE they have an org context, so this cannot require one.
+
+    NOT AUTHENTICATION. It returns names and branding so the sign-in screen can
+    render them; it exposes no tender, capability or decision data — those all
+    sit behind `require_org_id` and row-level security. Real sign-in (SSO/OIDC
+    per SPEC §11.4) still has to land before this is exposed publicly.
+    """
+    return await onboarding.list_orgs()
+
+
 @router.get("/onboarding/templates/products.csv")
 async def products_template() -> Response:
     return Response(content=onboarding.PRODUCT_CSV_TEMPLATE, media_type="text/csv",

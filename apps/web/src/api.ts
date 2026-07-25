@@ -75,6 +75,45 @@ export async function fetchModelHealth(): Promise<ModelHealth> {
   return response.json();
 }
 
+// A workspace you can sign in to. Identity + branding only.
+export interface OrgSummary {
+  org_id: string;
+  name: string;
+  slug: string;
+  branding: { primary_color?: string; logo_url?: string };
+  onboarded: boolean;
+}
+
+export async function fetchOrganizations(): Promise<OrgSummary[]> {
+  const response = await fetch(`${API_BASE}/organizations`);
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  return response.json();
+}
+
+/** The signed-in company, remembered across reloads. */
+const SESSION_KEY = "bidproof_org";
+
+export function getSession(): OrgSummary | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as OrgSummary) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function signIn(org: OrgSummary, role: RoleName): void {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(org));
+  setOrgId(org.org_id);
+  setRole(role);
+}
+
+export function signOut(): void {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem("bidproof_org_id");
+  localStorage.removeItem("bidproof_tender");
+}
+
 export interface RadarCard {
   tender_id: string;
   title: string;
