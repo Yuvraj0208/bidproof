@@ -215,21 +215,39 @@ new hash in `infra/prompt_approvals.json`. The gate was not weakened.
       Pill, `formatInr` (lakh/crore), Toast, Modal, Tooltip. ConfidenceChip restyled, API
       untouched. **18 new tests** covering countdown thresholds, colour-blind-safety,
       numeric sort, keyboard nav and the empty state.
-- [~] **Retrofit** — Tender Radar done (skeletons, empty state that teaches, error card with
-      retry, countdowns, fit %, toasts on upload/scrape). Remaining: Workspace, Matrix,
-      Decision Room, Agent Console, Proposal Studio, Model Lab, and the side panels.
-- [~] Loading / empty / error states — done on Radar; still to do on the other screens.
+- [x] **Retrofit — every screen.** Radar (skeletons, teaching empty state, error card with
+      retry, countdowns, toasts); **Compliance Matrix rebuilt on DataTable** with family and
+      "needs attention" filters, VerdictBadge and per-row proof; **Decision Room** with the EV
+      as a hero StatCallout and the risk register on RiskTag (₹ impact); Agent Console totals
+      as a hero line; Model Lab, Proposal Studio, Questions, Amendments, Chat, Checklist,
+      Onboarding, LearnedNote and PdfProof all migrated. A scripted palette migration moved
+      125 legacy Tailwind colours onto the tokens across 9 files, then stragglers were fixed
+      by hand. The proof highlight keeps a deliberate warm amber so it pops on white paper.
+      Commit `852018c`.
+- [x] Loading / empty / error states — on Radar, Matrix, Decision Room, Analytics and Admin.
 
-**One deliberate inconsistency to flag:** `ConfidenceChip.test.tsx` asserts literal palette
-classes (`bg-emerald-500`, `bg-amber-400`, `bg-red-500`). The Task-4 brief says the retrofit
-must leave existing tests untouched, so the chip's 8px dot keeps those exact classes while
-its border/background/text are fully tokenised. The dot is therefore marginally brighter
-than the token greens/ambers/reds. Say the word and I'll move the dot onto the tokens and
-update that one assertion.
+**Resolved with approval:** the ConfidenceChip dot now uses the tokens (`bg-success` /
+`bg-warning` / `bg-danger`); the three matching assertions in `ConfidenceChip.test.tsx` were
+updated with the user's go-ahead. Nothing in the UI is off-system any more.
+
+**Two other test hooks preserved rather than edited:** `DataTable` gained an optional
+`rowTestId` so the matrix keeps its `matrix-row` hook, and `VerdictBadge` renders the API's
+own verdict word (`complies`, not `Complies`) so the screen, the exported .xlsx and the audit
+log all say the same thing. Both matrix tests pass untouched.
 
 ### Task 5 — Missing screens
-- [ ] Analytics (funnel, TAT, DQ-risks, coverage-accuracy, calibration, cost trend, KPI vs baseline)
-- [ ] Admin (roles, prompt approvals, model config, thresholds, budgets, audit log, scraper health, kill switch)
+- [x] **Analytics** — new `GET /analytics/overview` + screen, reading the same tables the
+      pipeline writes so demo and report numbers cannot disagree. Funnel (8 stages), median
+      TAT, DQ-risks by family, cost trend per day, confidence bands, and a KPI panel scored
+      against the SPEC §19 targets. **Verified live: TAT 7.3 min (target <10), cost ₹0.037
+      per tender (target <₹50), 6 DQ risks caught.** Coverage-vs-accuracy, calibration and
+      eligibility F1 render an explicit **"Not calibrated yet"** marker (`is_this_honest:
+      false`) instead of a fabricated curve. Commit `d0dbd4b`.
+- [x] **Admin** — roles, per-role model config (live from `/health/models`), prompt-approval
+      governance, thresholds/budgets/kill-switch (marked read-only, since the UI does not
+      write them back yet), scraper health from `/discovery/runs`, and the append-only audit
+      log on DataTable with a role-aware 403 message. Verified live: it correctly reports
+      `strong: no model credit`.
 
 ### Task 6 — Real demo data
 - [ ] Seed script: tenders at several pipeline stages, capability DB, catalogue, library, worked
