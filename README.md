@@ -117,14 +117,27 @@ npm run dev
 
 Open **http://localhost:5173**.
 
-**4. Load some demo data** (a sample company and its catalogue):
+**4. Load the demo data — one command:**
 
 ```bash
-uv run --project apps/api python infra/seed/seed_capability_demo.py
-uv run --project apps/api python infra/seed/seed_library_demo.py
+uv run --project apps/api python infra/seed/seed_demo.py
 ```
 
-Then upload the sample tender in `tests/fixtures/digital.pdf` and watch it flow through the pipeline.
+This is **idempotent**: run it any time to bring the demo back, including after an
+integration-test run (the test fixtures TRUNCATE the database on purpose). It creates the
+demo organisation and its radar profile, the capability database and product catalogue,
+the past-proposal library, and two tenders which it pushes through the real pipeline:
+
+| Tender | What it demonstrates |
+|---|---|
+| `tender_winnable.pdf` | the happy path — rules extracted, matrix mostly complying, a Go decision in rupees |
+| `tender_hard.pdf` | the **failing** path — ₹500 crore turnover, ISO 45001 and a 15-day delivery the company cannot meet, so the matrix shows real **gaps**, the risk register fills, and **pre-bid query letters are drafted** |
+
+Both are needed: without a tender the company actually fails, there are no `gap` verdicts,
+and with no gaps the QuestionWriter has nothing to draft — half the demo spine stays invisible.
+
+It prints the organisation id at the end; paste that into the web app's **Organisation id**
+box. Add `--no-pipeline` to seed the data without making any model calls.
 
 ---
 
