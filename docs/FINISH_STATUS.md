@@ -22,7 +22,24 @@ The API must be restarted to pick up Python changes unless started with `--reloa
 
 ---
 
-## ⛔ BLOCKER — no model credit (needs Yuvraj, 2026-07-25)
+## ✅ Credit restored (2026-07-25) — spend discipline
+
+Wallet topped up to $5.00. Session spend so far ≈ $0.19 → **$4.81 remaining**. One full
+proposal generation (7 `strong` calls) is roughly 2 cents. Rules of thumb adopted:
+re-verify offline against stored output wherever possible instead of regenerating, and
+never re-run a generation just to look at it again.
+
+### ⚠️ Demo-data gap found while verifying (belongs to Task 6)
+Pre-bid letters are drafted **only for rules with a `gap` verdict** (`QUERYABLE_VERDICTS =
+{"gap"}`). The demo tender currently produces 6 complies / 6 needs_human / 6 not_applicable
+and **zero gaps**, so `POST /questions` correctly returns `{"letters": 0}` — the
+QuestionWriter path cannot be demonstrated at all. Task 6's seed **must include a tender
+with a genuine failing requirement** (e.g. a certification the company does not hold), or
+this part of the spine is invisible in the demo.
+
+---
+
+## ⛔ RESOLVED — was: no model credit
 
 `https://openrouter.ai/api/v1/credits` reports **total_credits 0, total_usage $0.1923 →
 balance −$0.19**. Every sizeable model call now returns **402 Payment Required**, so the
@@ -181,7 +198,23 @@ pipeline. Screens look empty cold. **Severity: high (Task 6).**
       deposit) which fixes the **false refusal** on in-scope questions.
       Verified: "What is the EMD?" → *"…Rs 2,50,000, payable at submission (p.1)"* with 2
       citations; "weather in Mumbai" still correctly refused. Commit `278b5f1`.
-- [ ] Show sample output: proposal, one pre-bid letter, three verdicts
+- [~] Sample output — proposal and verdicts shown to Yuvraj; **pre-bid letter could not be
+      shown** because no rule currently fails with `gap` (see the demo-data gap above).
+
+**Proposal after the derived-facts fix (verified live, one generation):**
+the three previously-stuck sections came unstuck — company_profile 546→1502 chars,
+eligibility_compliance 576→1354, commercial_terms 154→913; total **5,426 → 7,451 chars**,
+and four sections now cite the code-computed average turnover. Prose reads as real bid
+correspondence ("We confirm our full compliance with the eligibility criteria stipulated
+in Tender Notice No. …"), every figure carrying its source tag.
+
+- [x] **FactChecker false contradictions fixed** (commit `d6121fe`). A sentence citing
+      several facts — "₹120 cr in FY23 [F:a], ₹135 cr in FY24 [F:b], ₹150 cr in FY25 [F:c]"
+      — was checked against only `tags[0]`, so the other two figures were marked
+      *contradicted* and **blocked export on a perfectly correct sentence**. Claims are now
+      verified against the union of every cited fact; a number in none of them is still
+      contradicted, so rigour is unchanged. Re-checked offline against the stored proposal
+      (no model spend): **verified 18 → 27, contradicted 13 → 4.**
 
 **Governance note:** changing the writer prompt correctly tripped the prompt-approval CI
 gate (SPEC §14). Followed the real flow — ran the gold set (passed), then re-approved the
