@@ -1,6 +1,10 @@
 // API client. The org context header is the temporary tenancy mechanism
 // until US-16 brings real auth — same contract the backend enforces.
-export const API_BASE = "http://localhost:8000";
+// Where the API lives. Set VITE_API_BASE at build time to point a deployed
+// frontend at a deployed API; it falls back to the local dev server so nothing
+// changes for `npm run dev`.
+export const API_BASE =
+  import.meta.env.VITE_API_BASE?.replace(/\/$/, "") ?? "http://localhost:8000";
 
 export function getOrgId(): string {
   return localStorage.getItem("bidproof_org_id") ?? "";
