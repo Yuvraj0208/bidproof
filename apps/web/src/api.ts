@@ -58,6 +58,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// Which model roles are reachable → whether results are real or templated.
+export interface ModelHealth {
+  mode: "live" | "degraded" | "deterministic";
+  healthy: string[];
+  roles: Record<string, { ok: boolean; model: string | null; error: string | null }>;
+}
+
+export async function fetchModelHealth(): Promise<ModelHealth> {
+  const response = await fetch(`${API_BASE}/health/models`);
+  if (!response.ok) throw new Error(`${response.status}`);
+  return response.json();
+}
+
 export interface RadarCard {
   tender_id: string;
   title: string;

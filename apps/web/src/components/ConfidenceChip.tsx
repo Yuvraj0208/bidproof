@@ -3,6 +3,13 @@
 // every card, row, and sentence renders confidence through it.
 import { bandFromConfidence, type Band } from "../confidence";
 
+// Restyled onto the design tokens (Task 4) — the API is unchanged on purpose:
+// this chip is the trust primitive and appears on every card, row and sentence.
+//
+// The DOT classes stay on the literal Tailwind palette because
+// ConfidenceChip.test.tsx asserts these exact class names, and the Task-4 brief
+// requires the retrofit to leave existing tests untouched. The surrounding
+// chip (border/background/text) is fully tokenised; only the 8px dot differs.
 const DOT: Record<Band, string> = {
   green: "bg-emerald-500",
   yellow: "bg-amber-400",
@@ -10,9 +17,9 @@ const DOT: Record<Band, string> = {
 };
 
 const TEXT: Record<Band, string> = {
-  green: "text-emerald-700",
-  yellow: "text-amber-700",
-  red: "text-red-700",
+  green: "border-success/25 bg-success-tint text-success",
+  yellow: "border-warning/25 bg-warning-tint text-warning",
+  red: "border-danger/25 bg-danger-tint text-danger",
 };
 
 export interface ConfidenceChipProps {
@@ -28,7 +35,7 @@ export function ConfidenceChip({ confidence, band, reason }: ConfidenceChipProps
     <span
       data-band={resolved}
       title={reason ?? undefined}
-      className={`inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium ${TEXT[resolved]}`}
+      className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2 py-0.5 text-xs font-medium ${TEXT[resolved]}`}
     >
       <span
         data-testid="chip-dot"
