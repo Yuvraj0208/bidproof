@@ -10,8 +10,9 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
+from app.core.roles import Role, require_role
 from app.core.tenancy import require_org_id
-from app.models import Document, Element, Page, ParseRun, Tender
+from app.models import AuditLog, Document, Element, Page, ParseRun, Tender
 from app.observability import get_parse_logger
 from app.parsing import get_ladder
 from app.services import checking as checking_service
@@ -139,9 +140,11 @@ async def upload_tender(
         ladder=ladder,
         parse_logger=parse_logger,
     )
+    # Parsing and triage are free: local PDF reading and plain-code scoring.
+    # Rule extraction and checking CALL MODELS and cost money, so they do NOT
+    # run automatically — a human presses "Process with AI" on the tender they
+    # actually care about (FINISH_STATUS R2). Nothing reaches a model unasked.
     background.add_task(triage_service.triage_after_parse, org_id, tender_id)
-    background.add_task(extraction_service.extract_after_parse, org_id, tender_id)
-    background.add_task(checking_service.check_after_extract, org_id, tender_id)
     return UploadOut(
         tender_id=tender_id,
         document_id=document_id,
@@ -259,3 +262,87 @@ async def list_elements(
             )
             for e in elements
         ]
+
+
+class ProcessOut(BaseModel):
+    tender_id: uuid.UUID
+    rules: int
+    verdicts: dict
+    model_calls: int
+
+
+@router.post("/tenders/{tender_id}/process", response_model=ProcessOut)
+async def process_tender(
+    tender_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(require_org_id),
+    role: Role = Depends(require_role(Role.BID_EXECUTIVE)),
+    gateway=Depends(extraction_service.get_extraction_gateway),
+) -> ProcessOut:
+    """The ONLY route by which a tender reaches a model (FINISH_STATUS R2).
+
+    Upload and portal discovery deliberately stop after parsing and triage,
+    which are free. Extraction and checking cost money, so a named human opts
+    this specific tender in. The act is written to the append-only audit log so
+    the spend is attributable.
+    """
+    async with org_scoped_session(org_id) as session:
+        if await session.get(Tender, tender_id) is None:
+            raise HTTPException(404, "tender not found")
+
+    summary = await extraction_service.extract_rules(org_id, tender_id, gateway=gateway)
+    if summary is None:
+        raise HTTPException(
+            409,
+            "this tender has no parsed document yet — portal-discovered tenders "
+            "often carry metadata only; upload the PDF to read it",
+        )
+    checked = await checking_service.run_checks(org_id, tender_id) or {}
+
+    async with org_scoped_session(org_id) as session:
+        session.add(AuditLog(
+            org_id=org_id, tender_id=tender_id, actor=role.value,
+            action="tender_processed_with_ai",
+            details={"rules": summary.get("rules", 0),
+                     "model_calls": checked.get("model_calls", 0)},
+        ))
+
+    return ProcessOut(
+        tender_id=tender_id,
+        rules=summary.get("rules", 0),
+        verdicts=checked.get("verdicts", {}),
+        model_calls=checked.get("model_calls", 0),
+    )
+
+
+@router.delete("/tenders/{tender_id}", status_code=200)
+async def delete_tender(
+    tender_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(require_org_id),
+    role: Role = Depends(require_role(Role.BID_HEAD)),
+) -> dict:
+    """Remove a tender and everything derived from it (FINISH_STATUS R1).
+
+    Portal discovery brings in a lot of noise, and a human needs to be able to
+    clear it. Deletion is irreversible, so it is gated to bid_head-or-above and
+    recorded in the append-only audit log FIRST — the audit row survives the
+    cascade because it only references the tender id, not a foreign key.
+
+    No agent can reach this: it is a human-only endpoint (repo golden rule 8).
+    """
+    async with org_scoped_session(org_id) as session:
+        tender = await session.get(Tender, tender_id)
+        if tender is None:
+            raise HTTPException(404, "tender not found")
+        title, source = tender.title, tender.source
+        session.add(AuditLog(
+            org_id=org_id, tender_id=tender_id, actor=role.value,
+            action="tender_deleted",
+            details={"title": title, "source": source},
+        ))
+
+    async with org_scoped_session(org_id) as session:
+        tender = await session.get(Tender, tender_id)
+        if tender is not None:
+            await session.delete(tender)
+
+    return {"deleted": str(tender_id), "title": title}
