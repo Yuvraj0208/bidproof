@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 
 from test_checking_api import client_for, make_app
-from test_parser_ladder import DIGITAL
+from test_parser_ladder import DIGITAL, MIXED
 from test_rules_api import FakeGateway
 from test_upload_api import create_org
 
@@ -89,6 +89,70 @@ async def test_delete_requires_bid_head_and_is_audited(owner_conn):
         )
     ).scalars().all()
     assert "tender_deleted" in actions
+
+
+async def test_bulk_delete_clears_a_selection_and_audits_every_one(owner_conn):
+    """Portal discovery brings in more noise than anyone dismisses one at a time.
+
+    The batch must keep every guarantee the single delete has: gated to
+    bid_head-or-above, and an audit row per tender that outlives it.
+    """
+    org_id = await create_org(owner_conn)
+    app = make_app(FakeGateway([]))
+
+    async with client_for(app, org_id) as client:
+        first = await _upload(client)
+        # A second distinct document, so it is not rejected as a duplicate.
+        second = (
+            await client.post(
+                "/tenders/upload",
+                files={"file": ("other.pdf", MIXED, "application/pdf")},
+            )
+        ).json()["tender_id"]
+
+        refused = await client.post(
+            "/tenders/bulk-delete",
+            json={"tender_ids": [first, second]},
+            headers={"X-Role": "bid_executive"},
+        )
+        assert refused.status_code == 403, "deleting is not an executive's call"
+
+        ghost = "00000000-0000-0000-0000-000000000009"
+        result = await client.post(
+            "/tenders/bulk-delete",
+            json={"tender_ids": [first, second, ghost]},
+            headers={"X-Role": "bid_head"},
+        )
+        assert result.status_code == 200, result.text
+        body = result.json()
+        assert sorted(body["deleted"]) == sorted([first, second])
+        # An id that no longer exists is reported, not fatal — a stale tab must
+        # not be able to fail the whole action.
+        assert body["not_found"] == [ghost]
+
+        assert (await client.get(f"/tenders/{first}")).status_code == 404
+        assert (await client.get(f"/tenders/{second}")).status_code == 404
+
+    for tender_id in (first, second):
+        actions = (
+            await owner_conn.execute(
+                text("SELECT action FROM audit_log WHERE tender_id = :t"),
+                {"t": tender_id},
+            )
+        ).scalars().all()
+        assert "tender_deleted" in actions, f"no audit row for {tender_id}"
+
+
+async def test_bulk_delete_rejects_an_empty_selection(owner_conn):
+    org_id = await create_org(owner_conn)
+    app = make_app(FakeGateway([]))
+    async with client_for(app, org_id) as client:
+        empty = await client.post(
+            "/tenders/bulk-delete",
+            json={"tender_ids": []},
+            headers={"X-Role": "bid_head"},
+        )
+    assert empty.status_code == 422
 
 
 async def test_processing_a_metadata_only_tender_explains_itself(owner_conn):

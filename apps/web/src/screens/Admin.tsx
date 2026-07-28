@@ -6,7 +6,7 @@
 // and where the backend does not yet enforce one the UI says so rather than
 // pretending the lever is wired.
 import { useEffect, useState } from "react";
-import { API_BASE, authHeaders, getRole, ROLES, type ModelHealth } from "../api";
+import { API_BASE, authHeaders, type ModelHealth } from "../api";
 import { DataTable } from "../ui/DataTable";
 import { Pill } from "../ui/chips";
 import {
@@ -44,7 +44,6 @@ export default function Admin() {
   const [auditError, setAuditError] = useState<string | null>(null);
   const [models, setModels] = useState<ModelHealth | null>(null);
   const [scraper, setScraper] = useState<DiscoveryRun[] | null>(null);
-  const role = getRole();
 
   useEffect(() => {
     get<AuditEntry[]>("/audit").then(setAudit).catch((e) => setAuditError(String(e)));
@@ -60,7 +59,7 @@ export default function Admin() {
       <PageHeader
         title="Admin"
         subtitle="Roles, models, governance and the append-only audit trail."
-        meta={<Pill tone="brand">acting as {role}</Pill>}
+        meta={<Pill tone="brand">single operator</Pill>}
       />
 
       {/* Model configuration per role */}
@@ -103,19 +102,24 @@ export default function Admin() {
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         {/* Roles */}
         <Card>
-          <FieldLabel>Roles</FieldLabel>
+          <FieldLabel>Who can act</FieldLabel>
           <p className="mt-1 text-xs text-ink-muted">
-            The acting role gates sensitive actions. Auditor sits outside the
-            acting chain: it can read and audit, never act on a bid.
+            BidProof is running in <strong className="text-ink">single-operator
+            mode</strong>: one person does discovery, review, sign-off and export.
+            There is no role to switch.
           </p>
-          <ul className="mt-3 space-y-1 text-sm">
-            {ROLES.map((r) => (
-              <li key={r} className="flex items-center justify-between border-b border-hairline py-1">
-                <span className="text-ink">{r}</span>
-                {r === role && <Pill tone="brand">you</Pill>}
-              </li>
-            ))}
-          </ul>
+          <p className="mt-2 text-xs text-ink-muted">
+            The checkpoints themselves still stand. Every approval is still gated
+            and still written to the append-only audit log below with a name and a
+            timestamp — there is simply one name. The permission chain
+            (viewer → bid executive → reviewer → bid head → admin, with auditor
+            outside it) is still enforced by the API, ready for the day a second
+            person joins.
+          </p>
+          <div className="mt-3 flex items-center justify-between border-t border-hairline pt-2 text-sm">
+            <span className="text-ink">Operator</span>
+            <Pill tone="brand">full access</Pill>
+          </div>
         </Card>
 
         {/* Scraper health */}
@@ -200,7 +204,7 @@ export default function Admin() {
           <div className="p-4">
             <div className="rounded-[8px] border border-danger/25 bg-danger-tint px-3 py-2 text-sm text-danger">
               {auditError.includes("403")
-                ? "Your role may not read the audit log — switch to auditor or admin."
+                ? "The API refused the audit log for this operator."
                 : auditError}
             </div>
           </div>

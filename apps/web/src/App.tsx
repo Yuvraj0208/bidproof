@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 import {
   createOrg,
   deleteTender,
+  bulkDeleteTenders,
+  fetchPortalDocument,
   fetchRadar,
   getOrgId,
   processTender,
@@ -58,6 +60,10 @@ export default function App({
   const [refresh, setRefresh] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const [confirmDelete, setConfirmDelete] = useState<RadarCard | null>(null);
+  // Bulk selection. Portal discovery brings in far more noise than anyone
+  // wants to dismiss a row at a time.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
   useEffect(() => {
     if (!org) {
@@ -120,6 +126,65 @@ export default function App({
     }
   };
 
+  const toggle = (tenderId: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(tenderId)) next.delete(tenderId);
+      else next.add(tenderId);
+      return next;
+    });
+
+  const onBulkDelete = async () => {
+    const ids = cards.filter((c) => selected.has(c.tender_id)).map((c) => c.tender_id);
+    setConfirmBulk(false);
+    setBusy("bulk");
+    try {
+      const result = await bulkDeleteTenders(ids);
+      setSelected(new Set());
+      push(
+        result.not_found.length
+          ? `Deleted ${result.deleted.length}; ${result.not_found.length} were already gone.`
+          : `Deleted ${result.deleted.length} tender${result.deleted.length === 1 ? "" : "s"}.`,
+        "success",
+      );
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      push(
+        String(e).includes("403")
+          ? "Deleting is audited and needs an operator with full access."
+          : `Bulk delete failed: ${String(e)}`,
+        "danger",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyReference = async (reference: string) => {
+    try {
+      await navigator.clipboard.writeText(reference);
+      push(`Copied ${reference} — paste it into the portal's search.`, "success");
+    } catch {
+      push(`Could not copy. The reference is ${reference}.`, "info");
+    }
+  };
+
+  const onFetchDocument = async (card: RadarCard) => {
+    setBusy(card.tender_id);
+    try {
+      const result = await fetchPortalDocument(card.tender_id);
+      push(
+        `Read ${result.pages} page${result.pages === 1 ? "" : "s"} from ${card.source.toUpperCase()}. You can process it now.`,
+        "success",
+      );
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      push(`Could not fetch the document: ${String(e)}`, "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onDelete = async () => {
     if (!confirmDelete) return;
     const card = confirmDelete;
@@ -132,7 +197,7 @@ export default function App({
     } catch (e) {
       push(
         String(e).includes("403")
-          ? "Deleting a tender needs the bid_head role — switch role above."
+          ? "The API refused the delete for this operator."
           : `Delete failed: ${String(e)}`,
         "danger",
       );
@@ -305,18 +370,102 @@ export default function App({
         </p>
       </Modal>
 
+      <Modal
+        open={confirmBulk}
+        title={`Delete ${selected.size} tender${selected.size === 1 ? "" : "s"}?`}
+        onClose={() => setConfirmBulk(false)}
+        footer={<>
+          <Button onClick={() => setConfirmBulk(false)}>Cancel</Button>
+          <Button variant="danger" onClick={onBulkDelete}>
+            Delete {selected.size} permanently
+          </Button>
+        </>}
+      >
+        <ul className="max-h-48 space-y-1 overflow-auto text-sm text-ink">
+          {cards
+            .filter((c) => selected.has(c.tender_id))
+            .map((c) => (
+              <li key={c.tender_id} className="truncate">• {c.title}</li>
+            ))}
+        </ul>
+        <p className="mt-3 text-sm text-ink-muted">
+          This removes each tender and everything derived from it — rules,
+          verdicts, decision and proposal. It cannot be undone. Every deletion is
+          recorded separately in the audit log.
+        </p>
+      </Modal>
+
+      {/* Selection bar: only present once something is selected, so the radar
+          stays quiet when you are just reading. */}
+      {!loading && cards.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-hairline bg-white px-3 py-2">
+          <label className="flex items-center gap-2 text-xs text-ink-muted">
+            <input
+              type="checkbox"
+              data-testid="select-all"
+              checked={selected.size > 0 && selected.size === cards.length}
+              ref={(el) => {
+                if (el)
+                  el.indeterminate =
+                    selected.size > 0 && selected.size < cards.length;
+              }}
+              onChange={(e) =>
+                setSelected(
+                  e.target.checked
+                    ? new Set(cards.map((c) => c.tender_id))
+                    : new Set(),
+                )
+              }
+            />
+            Select all {cards.length}
+          </label>
+          {selected.size > 0 ? (
+            <>
+              <span className="text-xs font-medium text-ink">
+                {selected.size} selected
+              </span>
+              <Button size="sm" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={busy !== null}
+                onClick={() => setConfirmBulk(true)}
+              >
+                {busy === "bulk" ? "Deleting…" : `🗑 Delete ${selected.size}`}
+              </Button>
+            </>
+          ) : (
+            <span className="text-xs text-ink-muted">
+              Tick tenders to clear several at once.
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="space-y-3">
         {!loading &&
           cards.map((card) => (
             <Card key={card.tender_id} as="article" className="transition-shadow duration-150 hover:shadow-overlay">
               <div data-testid="radar-card">
                 <div className="flex items-start justify-between gap-3">
-                  <button
-                    onClick={() => open(card)}
-                    className="text-left text-sm font-semibold text-ink transition-colors duration-150 hover:text-indigo"
-                  >
-                    {card.title}
-                  </button>
+                  <div className="flex min-w-0 items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1 shrink-0"
+                      data-testid="select-tender"
+                      aria-label={`Select ${card.title}`}
+                      checked={selected.has(card.tender_id)}
+                      onChange={() => toggle(card.tender_id)}
+                    />
+                    <button
+                      onClick={() => open(card)}
+                      className="text-left text-sm font-semibold text-ink transition-colors duration-150 hover:text-indigo"
+                    >
+                      {card.title}
+                    </button>
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <CountdownChip closingAt={card.closing_at} />
                     <ConfidenceChip
@@ -338,6 +487,29 @@ export default function App({
                   {card.checkpoint0 && <Pill tone="warning">checkpoint-0: {card.checkpoint0}</Pill>}
                 </div>
 
+                {!card.has_document && (
+                  <p className="mt-2 text-xs text-ink-muted">
+                    {card.can_fetch_document ? (
+                      <>
+                        Not read yet — {card.source.toUpperCase()} serves this
+                        tender's PDF directly, so BidProof can fetch and read it
+                        for you. Reading is free; only “Process with AI” costs
+                        anything.
+                      </>
+                    ) : (
+                      <>
+                        {card.portal_hint ?? (
+                          <>
+                            Listing only — {card.source.toUpperCase()} publishes
+                            the details but not the document, so there is nothing
+                            to read yet. Upload the PDF here to read it.
+                          </>
+                        )}
+                      </>
+                    )}
+                  </p>
+                )}
+
                 {card.reasons.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
                     {card.reasons.map((reason) => (
@@ -353,15 +525,85 @@ export default function App({
 
                 {/* Per-tender control: nothing here has cost money yet. */}
                 <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    disabled={busy !== null}
-                    onClick={() => onProcess(card)}
-                    title="Extract the rules and check them — this is the step that calls a model"
-                  >
-                    ⚡ Process with AI
-                  </Button>
+                  {card.has_document ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={busy !== null}
+                      onClick={() => onProcess(card)}
+                      title="Extract the rules and check them — this is the step that calls a model"
+                    >
+                      ⚡ Process with AI
+                    </Button>
+                  ) : (
+                    <>
+                      {/* No PDF to read: the portal published a listing only, so
+                          offering "Process with AI" here could only ever fail. */}
+                      {card.portal_url ? (
+                        <a
+                          href={card.portal_url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1.5 rounded-[8px] border border-indigo/25 bg-indigo-tint px-2.5 py-1 text-xs font-medium text-indigo transition-colors duration-150 hover:bg-indigo/10"
+                        >
+                          Open on portal ↗
+                        </a>
+                      ) : (
+                        /* No link can land on this tender. Offer the reference to
+                           paste and a search page labelled for what it costs —
+                           sending every row to an unlabelled captcha form is what
+                           made this look broken. */
+                        <>
+                          {card.external_id && (
+                            <button
+                              onClick={() => copyReference(card.external_id!)}
+                              className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-white px-2.5 py-1 font-mono text-xs text-ink transition-colors duration-150 hover:bg-surface"
+                              title="Copy the tender reference, to paste into the portal's search"
+                            >
+                              ⧉ {card.external_id}
+                            </button>
+                          )}
+                          {card.portal_search_url && (
+                            <a
+                              href={card.portal_search_url}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="text-xs text-ink-muted underline decoration-hairline underline-offset-2 transition-colors duration-150 hover:text-ink"
+                              title={
+                                card.portal_requires_captcha
+                                  ? "Opens the portal's search form, which asks you to solve a captcha"
+                                  : "Opens the portal's search page"
+                              }
+                            >
+                              {card.portal_requires_captcha
+                                ? "Search manually (captcha) ↗"
+                                : "Search the portal ↗"}
+                            </a>
+                          )}
+                        </>
+                      )}
+                      {card.can_fetch_document ? (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          disabled={busy !== null}
+                          onClick={() => onFetchDocument(card)}
+                          title="This portal serves the PDF directly — fetch and read it now (free, no model call)"
+                        >
+                          {busy === card.tender_id ? "Fetching…" : "⬇ Fetch its PDF"}
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={busy !== null}
+                          onClick={() => fileInput.current?.click()}
+                          title="Download the PDF from the portal, then upload it here to read it"
+                        >
+                          ↑ Upload its PDF
+                        </Button>
+                      )}
+                    </>
+                  )}
                   <Button size="sm" onClick={() => open(card)}>
                     Open
                   </Button>
@@ -371,7 +613,7 @@ export default function App({
                     className="ml-auto text-danger"
                     disabled={busy !== null}
                     onClick={() => setConfirmDelete(card)}
-                    title="Delete this tender (bid_head only, audited)"
+                    title="Delete this tender — irreversible, and written to the audit log"
                   >
                     Delete
                   </Button>

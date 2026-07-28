@@ -24,12 +24,22 @@ export const ROLES = [
 ] as const;
 export type RoleName = (typeof ROLES)[number];
 
-export function getRole(): RoleName {
-  return (localStorage.getItem("bidproof_role") as RoleName) ?? "bid_executive";
-}
+// SINGLE-OPERATOR MODE.
+//
+// BidProof is run by one person today, so there is no role to switch: the
+// operator does discovery, review, sign-off and export themselves. `admin`
+// outranks every acting floor in the backend, so this one value clears every
+// `require_role` gate.
+//
+// The gates themselves are deliberately still there. SPEC §7 checkpoints and
+// the append-only audit log record WHO approved WHAT, and the sponsor asked for
+// checkpoints 2–6 by name — so nothing is deleted, there is simply one operator
+// who satisfies all of them. When a second person joins, re-expose the picker
+// and this constant goes away; no backend change is needed.
+export const OPERATOR_ROLE: RoleName = "admin";
 
-export function setRole(role: RoleName): void {
-  localStorage.setItem("bidproof_role", role);
+export function getRole(): RoleName {
+  return OPERATOR_ROLE;
 }
 
 // The linear chain of acting power, mirroring the backend (app.core.roles).
@@ -102,14 +112,14 @@ export function getSession(): OrgSummary | null {
   }
 }
 
-export function signIn(org: OrgSummary, role: RoleName): void {
+export function signIn(org: OrgSummary): void {
   localStorage.setItem(SESSION_KEY, JSON.stringify(org));
   setOrgId(org.org_id);
-  setRole(role);
 }
 
 export function signOut(): void {
   localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem("bidproof_role"); // left over from role-switching
   localStorage.removeItem("bidproof_org_id");
   localStorage.removeItem("bidproof_tender");
 }
@@ -127,6 +137,16 @@ export interface RadarCard {
   matched_category: string | null;
   reasons: string[];
   checkpoint0: string | null;
+  // Portal listings carry metadata only; the PDF sits behind a session.
+  has_document: boolean;
+  // A link that lands ON the tender, or null when the portal offers none.
+  portal_url: string | null;
+  // The manual route. On CPPP it costs a captcha, so it is labelled, not hidden.
+  portal_search_url: string | null;
+  portal_requires_captcha: boolean;
+  portal_hint: string | null;
+  // GeM hands over its PDFs directly; CPPP does not. The API decides.
+  can_fetch_document: boolean;
 }
 
 export interface LearnedPrefill {
@@ -515,7 +535,32 @@ export interface Verdict {
   document_id: string;
   page_no: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
+  // Set once a human has settled a `needs_human` verdict. `system_verdict` is
+  // what the checker said first, so an override is always visible.
+  system_verdict: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decided_reason: string | null;
 }
+
+/** The answers a human may give. `needs_human` is what they are resolving. */
+export const HUMAN_VERDICTS = [
+  "complies",
+  "partial",
+  "gap",
+  "not_applicable",
+] as const;
+
+export const decideVerdict = (
+  tenderId: string,
+  verdictId: string,
+  body: { verdict: string; reason: string; name: string },
+) =>
+  request<Verdict>(`/tenders/${tenderId}/verdicts/${verdictId}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
 export const fetchVerdicts = (tenderId: string) =>
   request<Verdict[]>(`/tenders/${tenderId}/verdicts`);
@@ -693,3 +738,35 @@ export const fetchOnboardingStatus = () =>
 
 export const FACTS_CSV_TEMPLATE_URL = `${API_BASE}/onboarding/templates/facts.csv`;
 export const PRODUCTS_CSV_TEMPLATE_URL = `${API_BASE}/onboarding/templates/products.csv`;
+
+/** Whether the tender has a readable PDF at all, and where it came from. */
+export interface TenderDetail {
+  id: string;
+  title: string;
+  source: string;
+  has_document: boolean;
+  portal_url: string | null;
+  portal_search_url: string | null;
+  portal_requires_captcha: boolean;
+  portal_hint: string | null;
+  can_fetch_document: boolean;
+  parse: { status: string; pages_total: number; error: string | null } | null;
+}
+
+export const fetchTenderDetail = (tenderId: string) =>
+  request<TenderDetail>(`/tenders/${tenderId}`);
+
+/** Clear a whole selection at once. Audited per tender, same as a single delete. */
+export const bulkDeleteTenders = (tenderIds: string[]) =>
+  request<{ deleted: string[]; not_found: string[] }>(`/tenders/bulk-delete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tender_ids: tenderIds }),
+  });
+
+/** Pull the tender's PDF straight from the portal and read it. GeM only. */
+export const fetchPortalDocument = (tenderId: string) =>
+  request<{ tender_id: string; document_id: string; pages: number; status: string }>(
+    `/tenders/${tenderId}/fetch-document`,
+    { method: "POST" },
+  );

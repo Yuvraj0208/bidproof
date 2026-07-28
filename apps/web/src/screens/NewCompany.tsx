@@ -65,7 +65,7 @@ export default function NewCompany({ onSignedIn }: { onSignedIn: () => void }) {
           try {
             const orgs = await fetchOrganizations();
             const mine = orgs.find((o) => o.org_id === orgId);
-            if (mine) signIn(mine, "bid_head");
+            if (mine) signIn(mine);
           } catch {
             /* the org context is already set; the shell will still work */
           }

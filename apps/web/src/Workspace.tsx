@@ -7,11 +7,6 @@ import {
   approveSection,
   askChat,
   attachChecklistFile,
-  getRole,
-  roleAtLeast,
-  ROLES,
-  setRole,
-  type RoleName,
   computeDecision,
   downloadMatrix,
   fetchAgentRuns,
@@ -42,6 +37,10 @@ import {
   type QueryLetter,
   type Rule,
   type Verdict,
+  fetchTenderDetail,
+  decideVerdict,
+  HUMAN_VERDICTS,
+  type TenderDetail,
 } from "./api";
 import { AmendmentsPanel } from "./components/AmendmentsPanel";
 import { ChatPanel } from "./components/ChatPanel";
@@ -63,6 +62,7 @@ import {
 import { LearnedNote } from "./components/LearnedNote";
 import { ReviewHub, pendingReviews } from "./components/ReviewHub";
 import { Button } from "./ui/primitives";
+import { Modal, useToast } from "./ui/overlays";
 import { MatrixTable } from "./components/MatrixTable";
 import { PdfProof, type Highlight } from "./components/PdfProof";
 
@@ -90,8 +90,20 @@ export function Workspace({
   onBack: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("review");
+  const { push } = useToast();
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [role, setRoleState] = useState<RoleName>(getRole());
+  const [detail, setDetail] = useState<TenderDetail | null>(null);
+  // Checkpoint 3: the verdict the system refused to guess, and the answer being
+  // written for it. The name is remembered across rows — the same person is
+  // usually settling several in one sitting.
+  const [deciding, setDeciding] = useState<Verdict | null>(null);
+  const [decidedName, setDecidedName] = useState("");
+  const [decision2, setDecision2] = useState({
+    verdict: "complies",
+    reason: "",
+    name: "",
+  });
+  const [savingDecision, setSavingDecision] = useState(false);
   const [rules, setRules] = useState<Rule[]>([]);
   const [verdicts, setVerdicts] = useState<Verdict[]>([]);
   const [decision, setDecision] = useState<DecisionData | null>(null);
@@ -144,6 +156,23 @@ export function Workspace({
       .catch(() => setBlockers(null));
     fetchChecklist(tenderId).then(setChecklist).catch(() => setChecklist(null));
     fetchChatHistory(tenderId).then(setChatTurns).catch(() => setChatTurns([]));
+    fetchTenderDetail(tenderId).then(setDetail).catch(() => setDetail(null));
+  };
+
+  const submitVerdictDecision = async () => {
+    if (deciding === null) return;
+    setSavingDecision(true);
+    try {
+      await decideVerdict(tenderId, deciding.id, decision2);
+      setDecidedName(decision2.name);
+      setDeciding(null);
+      push(`Recorded: ${deciding.key} is ${decision2.verdict}.`, "success");
+      load();
+    } catch (e) {
+      push(`Could not record the decision: ${String(e)}`, "danger");
+    } finally {
+      setSavingDecision(false);
+    }
   };
 
   const handleAsk = async (question: string) => {
@@ -335,23 +364,6 @@ export function Workspace({
               Export .xlsx
             </button>
           )}
-          <select
-            data-testid="workspace-role-select"
-            value={role}
-            onChange={(e) => {
-              const next = e.target.value as RoleName;
-              setRoleState(next);
-              setRole(next);
-            }}
-            className="rounded-[8px] border border-hairline px-2 py-1 text-xs"
-            title="Acting role — gates sensitive actions (Checkpoints 4–6)"
-          >
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
           <button
             onClick={recheck}
             disabled={busy}
@@ -373,6 +385,161 @@ export function Workspace({
             answering — restart the Postgres container and retry.
           </div>
           <Button size="sm" className="mt-2" onClick={load}>Retry</Button>
+        </div>
+      )}
+
+      {/* Checkpoint 3 (SPEC §7). The system said "I do not know" rather than
+          guessing; this is where the human answers. It never auto-passes, and
+          the answer is stored as a human decision, not a machine verdict. */}
+      <Modal
+        open={deciding !== null}
+        title={deciding ? `Decide: ${deciding.key}` : "Decide"}
+        onClose={() => setDeciding(null)}
+        footer={<>
+          <Button onClick={() => setDeciding(null)}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={
+              savingDecision ||
+              decision2.reason.trim().length < 3 ||
+              decision2.name.trim().length < 2
+            }
+            onClick={submitVerdictDecision}
+          >
+            {savingDecision ? "Recording…" : "Record decision"}
+          </Button>
+        </>}
+      >
+        {deciding && (
+          <div className="space-y-3">
+            <div>
+              <div className="text-xs font-medium text-ink-muted">
+                What the tender requires
+              </div>
+              <p className="mt-1 text-sm text-ink">{deciding.requirement_text}</p>
+              <button
+                onClick={() => {
+                  setHighlight({
+                    page_no: deciding.page_no,
+                    bbox: deciding.bbox,
+                    document_id: deciding.document_id,
+                  });
+                  setDeciding(null);
+                }}
+                className="mt-1 text-[11px] text-indigo underline decoration-hairline underline-offset-2"
+              >
+                see it on page {deciding.page_no} ↗
+              </button>
+            </div>
+
+            <div className="rounded-[10px] bg-surface px-3 py-2 text-xs text-ink-muted">
+              Why this reached you: {deciding.reason}
+            </div>
+
+            <label className="block text-xs font-medium text-ink-muted">
+              Your verdict
+              <select
+                data-testid="decide-verdict-select"
+                value={decision2.verdict}
+                onChange={(e) =>
+                  setDecision2({ ...decision2, verdict: e.target.value })
+                }
+                className="mt-1 w-full rounded-[8px] border border-hairline bg-white px-2 py-1.5 text-sm text-ink"
+              >
+                {HUMAN_VERDICTS.map((v) => (
+                  <option key={v} value={v}>
+                    {v.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-xs font-medium text-ink-muted">
+              Why (this goes into the compliance matrix and the audit log)
+              <textarea
+                data-testid="decide-verdict-reason"
+                value={decision2.reason}
+                onChange={(e) =>
+                  setDecision2({ ...decision2, reason: e.target.value })
+                }
+                rows={3}
+                placeholder="e.g. We have 6 years on comparable FDN surveys — see contract 2021/MoD/114."
+                className="mt-1 w-full rounded-[8px] border border-hairline bg-white px-2 py-1.5 text-sm text-ink"
+              />
+            </label>
+
+            <label className="block text-xs font-medium text-ink-muted">
+              Your name
+              <input
+                data-testid="decide-verdict-name"
+                value={decision2.name}
+                onChange={(e) =>
+                  setDecision2({ ...decision2, name: e.target.value })
+                }
+                placeholder="Who is deciding this"
+                className="mt-1 w-full rounded-[8px] border border-hairline bg-white px-2 py-1.5 text-sm text-ink"
+              />
+            </label>
+
+            <p className="text-[11px] text-ink-subtle">
+              Recorded as your decision, not the system's. What the checker
+              originally said is kept alongside it.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* A scraped listing has no PDF. Every panel below reads FROM the PDF, so
+          without this the workspace just looks broken. Explain it once, here. */}
+      {detail && !detail.has_document && (
+        <div className="border-b border-warning/30 bg-warning-tint px-4 py-3">
+          <div className="text-sm font-medium text-ink">
+            Listing only — there is no document to read yet
+          </div>
+          <div className="mt-1 max-w-3xl text-xs text-ink-muted">
+            {detail.portal_hint ??
+              `${detail.source.toUpperCase()} publishes the tender's details but not
+               the document, so nothing here has been read or extracted.`}{" "}
+            Upload the PDF and every panel below fills in — with a page and a box
+            behind each fact.
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {detail.portal_url ? (
+              <a
+                href={detail.portal_url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-white px-2.5 py-1 text-xs font-medium text-ink transition-colors duration-150 hover:bg-surface"
+              >
+                Open on {detail.source.toUpperCase()} ↗
+              </a>
+            ) : (
+              detail.portal_search_url && (
+                <a
+                  href={detail.portal_search_url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-xs text-ink-muted underline decoration-hairline underline-offset-2 transition-colors duration-150 hover:text-ink"
+                >
+                  {detail.portal_requires_captcha
+                    ? `Search ${detail.source.toUpperCase()} manually (captcha) ↗`
+                    : `Search ${detail.source.toUpperCase()} ↗`}
+                </a>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* The parse itself failed — different problem, different answer. */}
+      {detail?.parse?.status === "failed" && (
+        <div className="border-b border-danger/25 bg-danger-tint px-4 py-3">
+          <div className="text-sm font-medium text-danger">
+            This document could not be read
+          </div>
+          <div className="mt-1 text-xs text-danger/80">
+            {detail.parse.error ?? "The parse run failed."}
+          </div>
         </div>
       )}
 
@@ -456,15 +623,24 @@ export function Workspace({
             risks={risks}
             onSignOff={handleSignOff}
             onOverride={handleOverride}
-            canSignOff={roleAtLeast(role, "bid_head")}
-            roleNote={`Checkpoint 4 requires the Bid Head role — you are acting as “${role}”. Switch role (top right) to sign or override.`}
+            /* Single operator: the same person signs off. The checkpoint
+               itself still stands — it just never waits on someone else. */
+            canSignOff
+            roleNote=""
           />
         </div>
       ) : (
       <div className="flex min-h-0 flex-1">
         <aside className="w-[30rem] shrink-0 overflow-auto border-r bg-white">
           {tab === "matrix" ? (
-            <MatrixTable verdicts={verdicts} onProof={setHighlight} />
+            <MatrixTable
+              verdicts={verdicts}
+              onProof={setHighlight}
+              onDecide={(row) => {
+                setDeciding(row);
+                setDecision2({ verdict: "complies", reason: "", name: decidedName });
+              }}
+            />
           ) : (
             <>
               {rules.length === 0 && (

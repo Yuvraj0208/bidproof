@@ -10,10 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   fetchOrganizations,
-  ROLES,
   signIn,
   type OrgSummary,
-  type RoleName,
 } from "../api";
 import { OrgBadge } from "../ui/OrgBadge";
 import { Button } from "../ui/primitives";
@@ -129,7 +127,6 @@ function SignInPanel({
 }) {
   const navigate = useNavigate();
   const [picked, setPicked] = useState<OrgSummary | null>(null);
-  const [role, setRole] = useState<RoleName>("bid_head");
   const [query, setQuery] = useState("");
 
   const shown = useMemo(
@@ -142,7 +139,7 @@ function SignInPanel({
 
   const enter = () => {
     if (!picked) return;
-    signIn(picked, role);
+    signIn(picked);
     // Tell Root the session exists BEFORE navigating: the `storage` event does
     // not fire in the tab that wrote it, so without this the /app route would
     // still see a null session and bounce straight back here.
@@ -248,19 +245,6 @@ function SignInPanel({
                 })}
               </ul>
 
-              <label className="mt-3 block text-xs text-ink-muted">
-                Sign in as
-                <select
-                  data-testid="role-picker"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as RoleName)}
-                  className="mt-1 w-full rounded-[8px] border border-hairline bg-white px-2 py-1.5 text-sm text-ink"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
-                  ))}
-                </select>
-              </label>
 
               <Button
                 variant="primary"
