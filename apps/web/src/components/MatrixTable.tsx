@@ -13,6 +13,7 @@ import { Button, EmptyState } from "../ui/primitives";
 
 export interface VerdictRow {
   id: string;
+  rule_id: string;
   family: string;
   key: string;
   requirement_text: string;
@@ -25,6 +26,11 @@ export interface VerdictRow {
   document_id: string;
   page_no: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
+  // Present once a human has settled this one (SPEC §7 checkpoint 3).
+  system_verdict: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  decided_reason: string | null;
 }
 
 // The order a bid manager triages in: what blocks us, then what needs us.
@@ -39,9 +45,12 @@ const VERDICT_ORDER: Record<string, number> = {
 export function MatrixTable({
   verdicts,
   onProof,
+  onDecide,
 }: {
   verdicts: VerdictRow[];
   onProof: (highlight: Highlight) => void;
+  /** Open the decision form for a verdict the system would not guess. */
+  onDecide?: (row: VerdictRow) => void;
 }) {
   const [filter, setFilter] = useState<string>("all");
 
@@ -91,11 +100,35 @@ export function MatrixTable({
         <div className="flex flex-col items-start gap-1">
           <VerdictBadge verdict={row.verdict} />
           {row.verdict === "needs_human" && (
+            <>
+              <span
+                data-testid="queued-badge"
+                className="text-[11px] font-medium text-danger"
+              >
+                queued for human
+              </span>
+              {onDecide && (
+                <button
+                  data-testid="decide-verdict"
+                  onClick={(event) => {
+                    // The row itself opens the proof; this must not do both.
+                    event.stopPropagation();
+                    onDecide(row);
+                  }}
+                  className="rounded-[8px] border border-indigo/25 bg-indigo-tint px-2 py-0.5 text-[11px] font-medium text-indigo transition-colors duration-150 hover:bg-indigo/10"
+                >
+                  Decide →
+                </button>
+              )}
+            </>
+          )}
+          {row.decided_by && (
+            /* A human answer is never dressed up as a machine one. */
             <span
-              data-testid="queued-badge"
-              className="text-[11px] font-medium text-danger"
+              data-testid="decided-badge"
+              className="text-[11px] text-ink-subtle"
             >
-              queued for human
+              you decided · was {row.system_verdict ?? "unknown"}
             </span>
           )}
           {row.arithmetic && (

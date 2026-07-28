@@ -351,6 +351,14 @@ class VerdictRow(Base):
     cited_product_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("product_catalogue.id", ondelete="SET NULL")
     )
+    # A human settling a `needs_human` verdict (migration 0021). `verdict` stays
+    # the EFFECTIVE answer that the matrix, export blocker and EV read;
+    # `system_verdict` preserves what the checker said, so an override is always
+    # visible and never silently becomes a machine judgement.
+    system_verdict: Mapped[str | None] = mapped_column(String)
+    decided_by: Mapped[str | None] = mapped_column(String)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_reason: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

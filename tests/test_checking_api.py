@@ -118,6 +118,106 @@ async def test_missing_capability_data_abstains_not_passes(owner_conn):
     assert by_key["required_standard"]["verdict"] == "gap"
 
 
+async def test_a_human_can_settle_a_needs_human_verdict(owner_conn):
+    """The bug this closes: the matrix said `needs_human` and the Review Hub
+    counted it as blocking submission, but there was no way to answer.
+
+    SPEC §7 checkpoint 3 — the human has the last word, and the machine's own
+    verdict is kept so the override never passes as a machine judgement."""
+    org_id = await create_org(owner_conn)  # NO facts, NO products -> abstains
+    app = make_app(FakeGateway(['{"rules": []}']))
+
+    async with client_for(app, org_id) as client:
+        tender_id = (
+            await client.post(
+                "/tenders/upload",
+                files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
+            )
+        ).json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
+        await client.post(f"/tenders/{tender_id}/check")
+
+        verdicts = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
+        queued = next(v for v in verdicts if v["verdict"] == "needs_human")
+        assert queued["decided_by"] is None
+
+        # A reason is not optional: an assertion with no reason is not evidence.
+        bare = await client.post(
+            f"/tenders/{tender_id}/verdicts/{queued['id']}/decide",
+            json={"verdict": "complies", "reason": "", "name": "Yuvraj"},
+        )
+        assert bare.status_code == 422
+
+        # `needs_human` is what is being resolved, not a resolution.
+        circular = await client.post(
+            f"/tenders/{tender_id}/verdicts/{queued['id']}/decide",
+            json={"verdict": "needs_human", "reason": "still unsure",
+                  "name": "Yuvraj"},
+        )
+        assert circular.status_code == 400
+
+        decided = await client.post(
+            f"/tenders/{tender_id}/verdicts/{queued['id']}/decide",
+            json={"verdict": "complies",
+                  "reason": "6 years on comparable FDN surveys, contract 2021/MoD/114",
+                  "name": "Yuvraj"},
+        )
+        assert decided.status_code == 200, decided.text
+        body = decided.json()
+        assert body["verdict"] == "complies"
+        assert body["system_verdict"] == "needs_human"   # the override is visible
+        assert body["decided_by"] == "Yuvraj"
+        assert "comparable FDN surveys" in body["decided_reason"]
+        # The proof chain is untouched: the human decided what a CITED
+        # requirement means, not what the tender says.
+        assert body["el_id"] == queued["el_id"]
+        assert body["page_no"] == queued["page_no"]
+
+        after = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
+        settled = next(v for v in after if v["id"] == queued["id"])
+        assert settled["verdict"] == "complies"
+        assert settled["decided_by"] == "Yuvraj"
+
+    actions = (
+        await owner_conn.execute(
+            text("SELECT action FROM audit_log WHERE tender_id = :t"),
+            {"t": tender_id},
+        )
+    ).scalars().all()
+    assert "verdict_decided_by_human" in actions
+
+
+async def test_a_second_decision_still_shows_the_original_machine_verdict(owner_conn):
+    """Correcting a correction must not erase what the checker actually said."""
+    org_id = await create_org(owner_conn)
+    app = make_app(FakeGateway(['{"rules": []}']))
+
+    async with client_for(app, org_id) as client:
+        tender_id = (
+            await client.post(
+                "/tenders/upload",
+                files={"file": ("tender.pdf", DIGITAL, "application/pdf")},
+            )
+        ).json()["tender_id"]
+        await client.post(f"/tenders/{tender_id}/extract")
+        await client.post(f"/tenders/{tender_id}/check")
+        verdicts = (await client.get(f"/tenders/{tender_id}/verdicts")).json()
+        queued = next(v for v in verdicts if v["verdict"] == "needs_human")
+
+        for verdict, reason in (("complies", "first read"), ("gap", "on reflection")):
+            response = await client.post(
+                f"/tenders/{tender_id}/verdicts/{queued['id']}/decide",
+                json={"verdict": verdict, "reason": reason, "name": "Yuvraj"},
+            )
+            assert response.status_code == 200, response.text
+
+        final = response.json()
+        assert final["verdict"] == "gap"
+        assert final["system_verdict"] == "needs_human", (
+            "the FIRST machine verdict must survive, not the previous human one"
+        )
+
+
 async def test_verdicts_and_risks_respect_rls(owner_conn, app_engine):
     org_a = await create_org(owner_conn)
     org_b = await create_org(owner_conn)

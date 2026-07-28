@@ -6,6 +6,7 @@ import { MatrixTable, type VerdictRow } from "./MatrixTable";
 
 const ROW: VerdictRow = {
   id: "v-1",
+  rule_id: "r-1",
   family: "eligibility",
   key: "min_turnover",
   requirement_text: "Minimum average annual turnover: Rs 5 crore",
@@ -18,6 +19,10 @@ const ROW: VerdictRow = {
   document_id: "doc-1",
   page_no: 1,
   bbox: { x0: 73, y0: 188, x1: 369, y1: 198 },
+  system_verdict: null,
+  decided_by: null,
+  decided_at: null,
+  decided_reason: null,
 };
 
 const QUEUED: VerdictRow = {
@@ -57,5 +62,50 @@ describe("MatrixTable", () => {
       bbox: ROW.bbox,
       document_id: "doc-1",
     });
+  });
+
+  // The bug this closes: the matrix told you 10 verdicts were yours to settle
+  // and gave you no way to settle them.
+  it("offers a way to decide a needs-human row", () => {
+    const onDecide = vi.fn();
+    render(
+      <MatrixTable verdicts={[ROW, QUEUED]} onProof={() => {}} onDecide={onDecide} />,
+    );
+    fireEvent.click(screen.getByTestId("decide-verdict"));
+    expect(onDecide).toHaveBeenCalledWith(QUEUED);
+  });
+
+  it("offers no decision control on a row the system already settled", () => {
+    render(<MatrixTable verdicts={[ROW]} onProof={() => {}} onDecide={() => {}} />);
+    expect(screen.queryByTestId("decide-verdict")).toBeNull();
+  });
+
+  it("deciding does not also fire click-to-proof", () => {
+    const onProof = vi.fn();
+    render(
+      <MatrixTable verdicts={[QUEUED]} onProof={onProof} onDecide={() => {}} />,
+    );
+    fireEvent.click(screen.getByTestId("decide-verdict"));
+    expect(onProof).not.toHaveBeenCalled();
+  });
+
+  it("shows a human answer as a human answer, with what the system had said", () => {
+    const decided: VerdictRow = {
+      ...QUEUED,
+      verdict: "complies",
+      system_verdict: "needs_human",
+      decided_by: "Yuvraj",
+      decided_at: "2026-07-26T12:00:00Z",
+      decided_reason: "6 years on comparable surveys",
+      confidence: 1,
+      band: "green",
+    };
+    render(<MatrixTable verdicts={[decided]} onProof={() => {}} onDecide={() => {}} />);
+    const badge = screen.getByTestId("decided-badge");
+    expect(badge).toHaveTextContent("you decided");
+    expect(badge).toHaveTextContent("needs_human");
+    // It is settled, so it must no longer be queued or offer a Decide button.
+    expect(screen.queryByTestId("queued-badge")).toBeNull();
+    expect(screen.queryByTestId("decide-verdict")).toBeNull();
   });
 });
