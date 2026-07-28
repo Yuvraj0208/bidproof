@@ -47,8 +47,24 @@ async def lifespan(app: FastAPI):
 
     probe = asyncio.create_task(availability.log_at_startup())
 
+    # Close out any parse left mid-flight by the previous process, so the
+    # console never shows a run that is "still going" when nothing is.
+    async def _reap() -> None:
+        from app.services.ingest import reap_interrupted_parse_runs
+
+        try:
+            reaped = await reap_interrupted_parse_runs()
+            if reaped:
+                logger.warning(
+                    "closed %d parse run(s) interrupted by a restart", reaped
+                )
+        except Exception as exc:
+            logger.warning("could not reap interrupted parse runs: %s", exc)
+
+    reaper = asyncio.create_task(_reap())
+
     yield
-    for pending in (task, probe):
+    for pending in (task, probe, reaper):
         if pending is not None:
             pending.cancel()
 

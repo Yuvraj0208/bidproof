@@ -10,7 +10,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from bidproof_guard import scan as guard_scan
 from bidproof_parser import ParserLadder, compute_parse_cost_inr
@@ -191,9 +191,13 @@ async def execute_parse_run(
         run.status = "running"
         run.started_at = datetime.now(timezone.utc)
 
-    try:
-        result = await asyncio.to_thread(ladder.parse, pdf_bytes)
-    except Exception as exc:
+    async def mark_failed(exc: Exception) -> None:
+        """Resolve the row, whatever went wrong.
+
+        A run left at `running` never resolves itself, and the Agent Console
+        then reports a parse that is still going when nothing is — so every
+        exit from here must land on a terminal status.
+        """
         async with org_scoped_session(org_id) as session:
             run = await session.get(ParseRun, parse_run_id)
             run.status = "failed"
@@ -222,6 +226,11 @@ async def execute_parse_run(
             duration_ms=int((time.monotonic() - started) * 1000),
             meta={"error": str(exc)[:300]},
         )
+
+    try:
+        result = await asyncio.to_thread(ladder.parse, pdf_bytes)
+    except Exception as exc:
+        await mark_failed(exc)
         return
 
     # Rupee cost is plain arithmetic — never a model (§9 rule 2).
@@ -229,62 +238,68 @@ async def execute_parse_run(
     status = "needs_human" if result.needs_human else "succeeded"
     element_count = 0
 
-    async with org_scoped_session(org_id) as session:
-        for page in result.pages:
-            session.add(
-                Page(
-                    org_id=org_id,
-                    document_id=document_id,
-                    page_no=page.page_no,
-                    width=page.width,
-                    height=page.height,
-                    route=page.route.value,
-                    status=page.status.value,
-                    confidence=page.confidence,
-                )
-            )
-        await session.flush()
-
-        guard_flag_count = 0
-        for page in result.pages:
-            for element in page.elements:
-                element_count += 1
-                # The injection scanner runs over every element (§11.1). A hit
-                # is FLAGGED for the human and treated as inert data — the
-                # ground-check, schemas, and least privilege stop it acting.
-                verdict = guard_scan(element.text)
-                if verdict.flagged:
-                    guard_flag_count += 1
+    try:
+        async with org_scoped_session(org_id) as session:
+            for page in result.pages:
                 session.add(
-                    Element(
+                    Page(
                         org_id=org_id,
                         document_id=document_id,
-                        page_no=element.page_no,
-                        kind=element.kind,
-                        text=element.text,
-                        x0=element.bbox.x0,
-                        y0=element.bbox.y0,
-                        x1=element.bbox.x1,
-                        y1=element.bbox.y1,
-                        confidence=element.confidence,
-                        seq=element.seq,
-                        guard_flagged=verdict.flagged,
-                        guard_category=verdict.category,
+                        page_no=page.page_no,
+                        width=page.width,
+                        height=page.height,
+                        route=page.route.value,
+                        status=page.status.value,
+                        confidence=page.confidence,
                     )
                 )
+            await session.flush()
 
-        document = await session.get(Document, document_id)
-        document.page_count = result.pages_total
+            guard_flag_count = 0
+            for page in result.pages:
+                for element in page.elements:
+                    element_count += 1
+                    # The injection scanner runs over every element (§11.1). A hit
+                    # is FLAGGED for the human and treated as inert data — the
+                    # ground-check, schemas, and least privilege stop it acting.
+                    verdict = guard_scan(element.text)
+                    if verdict.flagged:
+                        guard_flag_count += 1
+                    session.add(
+                        Element(
+                            org_id=org_id,
+                            document_id=document_id,
+                            page_no=element.page_no,
+                            kind=element.kind,
+                            text=element.text,
+                            x0=element.bbox.x0,
+                            y0=element.bbox.y0,
+                            x1=element.bbox.x1,
+                            y1=element.bbox.y1,
+                            confidence=element.confidence,
+                            seq=element.seq,
+                            guard_flagged=verdict.flagged,
+                            guard_category=verdict.category,
+                        )
+                    )
 
-        run = await session.get(ParseRun, parse_run_id)
-        run.status = status
-        run.pages_total = result.pages_total
-        run.pages_text = result.pages_text
-        run.pages_ocr = result.pages_ocr
-        run.pages_flagged = result.pages_flagged
-        run.elements_discarded = result.elements_discarded
-        run.cost_inr = cost_inr
-        run.finished_at = datetime.now(timezone.utc)
+            document = await session.get(Document, document_id)
+            document.page_count = result.pages_total
+
+            run = await session.get(ParseRun, parse_run_id)
+            run.status = status
+            run.pages_total = result.pages_total
+            run.pages_text = result.pages_text
+            run.pages_ocr = result.pages_ocr
+            run.pages_flagged = result.pages_flagged
+            run.elements_discarded = result.elements_discarded
+            run.cost_inr = cost_inr
+            run.finished_at = datetime.now(timezone.utc)
+    except Exception as exc:
+        # The pages were read fine; storing them is what broke. Same rule:
+        # the row must not be left claiming the parse is still running.
+        await mark_failed(exc)
+        return
 
     parse_logger.log(
         ParseRunLog(
@@ -311,3 +326,35 @@ async def execute_parse_run(
               "pages_flagged": result.pages_flagged, "elements": element_count,
               "guard_flagged_elements": guard_flag_count},
     )
+
+
+async def reap_interrupted_parse_runs() -> int:
+    """Resolve parse runs orphaned by a server restart.
+
+    `execute_parse_run` runs as a background task, so a restart mid-parse kills
+    it and leaves the row at `running` for ever — the Agent Console then reports
+    a parse that is still going when nothing is. Called once at startup: any run
+    left `pending`/`running` from a previous process is closed as failed, with a
+    reason that says what actually happened.
+
+    Runs on the owner engine because it spans every tenant, and it is
+    housekeeping rather than a tenant action.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(get_settings().database_url_owner)
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "UPDATE parse_runs SET status = 'failed', "
+                    "finished_at = now(), "
+                    "error = 'interrupted — the API restarted while this parse "
+                    "was running; upload the document again' "
+                    "WHERE status IN ('pending', 'running')"
+                )
+            )
+            await conn.commit()
+            return result.rowcount or 0
+    finally:
+        await engine.dispose()

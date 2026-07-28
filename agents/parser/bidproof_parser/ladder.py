@@ -9,6 +9,7 @@ The ground-check runs on every engine output: an element without real text,
 a valid box, and a confidence is discarded and counted — it does not exist.
 """
 
+import logging
 import string
 
 import pypdfium2 as pdfium
@@ -74,6 +75,9 @@ def compute_parse_cost_inr(pages_ocr: int, ocr_cost_per_page_inr: float) -> floa
     return round(pages_ocr * ocr_cost_per_page_inr, 4)
 
 
+logger = logging.getLogger(__name__)
+
+
 class ParserLadder:
     def __init__(
         self,
@@ -87,6 +91,75 @@ class ParserLadder:
         self._ocr_engine = ocr_engine
         self._min_chars = min_chars_text_page
         self._conf_threshold = page_confidence_threshold
+        # Set when step 1 had to drop to the built-in reader.
+        self.text_extractor_fell_back = False
+        # Pages the configured extractor lost but pdfium read anyway.
+        self.pages_recovered_by_pdfium = 0
+
+    def _extract_text(
+        self, pdf_bytes: bytes, text_pages: list[int]
+    ) -> dict[int, list[RawElement]]:
+        """Step 1, with the ladder's own rule applied to itself.
+
+        The ladder degrades honestly when an engine is MISSING; it must do the
+        same when an engine FAILS. A crash in the configured extractor used to
+        propagate all the way out and fail the whole parse run, so one
+        unreadable item in a real tender lost the entire document. Falling back
+        to the built-in pdfium reader keeps the pages, and the caller still gets
+        every element it can be given.
+        """
+        try:
+            return self._text_extractor.extract(pdf_bytes, text_pages)
+        except Exception as exc:
+            logger.warning(
+                "text extractor %s failed (%s); falling back to pdfium",
+                type(self._text_extractor).__name__, exc,
+            )
+            self.text_extractor_fell_back = True
+            try:
+                from bidproof_parser.engines.pdfium_text import PdfiumTextExtractor
+
+                return PdfiumTextExtractor().extract(pdf_bytes, text_pages)
+            except Exception as fallback_exc:
+                # Both readers are gone. Return nothing rather than raise: the
+                # pages will route to OCR or be flagged for a human, which is
+                # the ladder's last honest step.
+                logger.error("pdfium fallback also failed: %s", fallback_exc)
+                return {}
+
+    def _retry_with_pdfium(
+        self, pdf_bytes: bytes, pages: list[int]
+    ) -> dict[int, list[RawElement]]:
+        """Re-read `pages` with the built-in reader, keeping only real gains.
+
+        A page is only replaced when pdfium returns something that does NOT look
+        like garbage — a genuinely mangled text layer (broken CID fonts) still
+        reads as garbage here and correctly falls through to OCR.
+        """
+        from bidproof_parser.engines.pdfium_text import PdfiumTextExtractor
+
+        if isinstance(self._text_extractor, PdfiumTextExtractor):
+            return {}  # already the fallback; retrying it would prove nothing
+
+        try:
+            recovered = PdfiumTextExtractor().extract(pdf_bytes, pages)
+        except Exception as exc:
+            logger.warning("pdfium retry failed for %d page(s): %s", len(pages), exc)
+            return {}
+
+        gained = {
+            page_no: elements
+            for page_no, elements in recovered.items()
+            if not looks_like_garbage(elements)
+        }
+        if gained:
+            self.pages_recovered_by_pdfium += len(gained)
+            logger.warning(
+                "%s returned nothing usable for %d page(s); pdfium recovered %d "
+                "of them from the existing text layer",
+                type(self._text_extractor).__name__, len(pages), len(gained),
+            )
+        return gained
 
     def parse(self, pdf_bytes: bytes) -> ParseResult:
         infos = inspect_pages(pdf_bytes)
@@ -100,11 +173,25 @@ class ParserLadder:
 
         text_pages = [n for n, r in routes.items() if r is PageRoute.TEXT]
         extracted: dict[int, list[RawElement]] = (
-            self._text_extractor.extract(pdf_bytes, text_pages) if text_pages else {}
+            self._extract_text(pdf_bytes, text_pages) if text_pages else {}
         )
 
-        # Step 2 rerouting: a "text" page whose extraction looks wrong gets
-        # one honest retry through OCR before anyone gives up on it.
+        # Step 1b: the page HAS a text layer (step 0 counted the characters),
+        # so before paying for OCR, try the cheap built-in reader on whatever
+        # the configured extractor did not manage to return.
+        #
+        # This is not hypothetical. On a real 283-page tender, Docling hit
+        # `std::bad_alloc` while preprocessing and silently returned nothing for
+        # those pages — it did not raise, so the fallback in `_extract_text`
+        # never fired. Those pages then went to OCR at ~45 s each to re-read
+        # text that was already sitting in the file. Cheapest step first is the
+        # ladder's whole point (SPEC §5.2).
+        retry = [n for n in text_pages if looks_like_garbage(extracted.get(n, []))]
+        if retry:
+            extracted.update(self._retry_with_pdfium(pdf_bytes, retry))
+
+        # Step 2 rerouting: a "text" page whose extraction still looks wrong
+        # gets one honest retry through OCR before anyone gives up on it.
         for page_no in text_pages:
             if looks_like_garbage(extracted.get(page_no, [])):
                 routes[page_no] = PageRoute.OCR
