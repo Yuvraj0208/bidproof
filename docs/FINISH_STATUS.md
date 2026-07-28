@@ -389,3 +389,432 @@ log all say the same thing. Both matrix tests pass untouched.
 - [ ] web tests, api tests, gold-set harness, attack suite — all results shown
 - [ ] Every screen re-walked; §17 UX principles checked; 1080p + 1440p verified
 - [ ] Demo-readiness report (Week-3 spine, what works, what's weak, §19 targets confirmed)
+
+---
+
+## Post-QA defect: real PDFs failed to parse (reported 2026-07-26)
+
+**Symptom.** `6565dbb36c16dTenderdoc144.pdf` uploaded, console showed *parser failed*.
+Separately, none of the 18 scraped tenders would open or process.
+
+**Two unrelated causes.**
+
+### 1. One picture destroyed the whole document (real bug, fixed)
+
+`docling_engine.py` read an item's text as:
+
+```python
+getattr(item, "text", None) or getattr(item, "export_to_markdown", lambda: "")()
+```
+
+Against the installed docling 2.114.0, a `PictureItem` has **no `.text`**, so the `or`
+branch ran — and `PictureItem.export_to_markdown(self, doc, ...)` **requires `doc`**,
+raising `TypeError: missing 1 required positional argument`. Nothing caught it, so it
+propagated out of `ladder.parse()` and `execute_parse_run` marked the entire run
+`failed`. **One logo failed an 800-page tender.** Every real government PDF has one.
+
+The fixtures were reportlab text-only, so the whole suite passed while real documents
+failed — a coverage gap, not luck. Worse, since the pdfium fallback was chosen at
+*wiring* time (is docling importable?) and never on *failure*, having Docling
+installed made the product worse than not having it.
+
+Fixed in three places:
+- `docling_engine.py` — `item_text()` reads `.text`, else calls `export_to_markdown`
+  guarded and with the document; an uncaptioned picture yields `""` and is skipped,
+  never invented into an element (§9 rule 1).
+- `docling_engine.py` — per-item `try/except`, counted. A malformed item costs one
+  element, never the document.
+- `ladder.py` — `_extract_text()` falls back to pdfium when the configured extractor
+  *raises*. The ladder already degraded honestly for a MISSING engine (SPEC §5.2); it
+  now does the same for a FAILING one.
+
+**Regression tests** (`tests/test_parser_ladder.py`, 17 passing): a fixture PDF with an
+embedded image; an `ExplodingExtractor` proving the fallback; and three unit tests of
+`item_text` including a `PictureLike` that reproduces the exact `TypeError`. Verified by
+restoring the buggy line — 2 tests fail; restoring the fix — 17 pass.
+
+### 2. Scraped tenders have no document (correct, but unexplained)
+
+All 18 CPPP/GeM tenders have **no `documents` row**: the portals publish listing
+metadata but keep the PDF behind a session. So the workspace showed empty panels and
+*Process with AI* returned a 409 the UI only flashed as a toast. Designed behaviour,
+never stated.
+
+All 18 do carry a `portal_url`, so the dead end became a next action:
+- `has_document` + `portal_url` exposed on both the radar card and tender detail.
+- Radar card: no document ⇒ *Process with AI* is replaced by **Open on portal ↗** and
+  **↑ Upload its PDF**, with a one-line reason.
+- Workspace: a banner explaining it, instead of empty panels; and a separate banner
+  when the parse genuinely *failed*, showing the error.
+
+The 409 stays — it is correct. The UI now stops the user reaching it.
+
+### 3. Parse runs that never resolved
+
+The failing document left one `failed` row and one orphaned `running` row, so the
+console reported a parse still in flight when nothing was. Two holes, both closed:
+- `execute_parse_run` only guarded `ladder.parse`; the block that **persists** pages
+  and elements was unguarded, so a storage failure left the row at `running` for ever.
+  Both paths now go through `mark_failed`.
+- A process killed mid-parse (a `--reload` restart) can never resolve its own row.
+  `reap_interrupted_parse_runs()` runs at startup and closes anything left
+  `pending`/`running` as failed, with an explicit reason.
+
+### 4. Pages with a perfectly good text layer were being sent to OCR
+
+Found while verifying the fix on the user's own 283-page PDF. Docling hit
+`std::bad_alloc` in its preprocess stage and **silently returned a document with
+those pages missing** — it did not raise, so the fallback in `_extract_text` never
+fired. `looks_like_garbage` then correctly judged the pages empty and routed them to
+OCR, at roughly 45 s a page, to re-read text that was already sitting in the file.
+
+Added **step 1b** to the ladder: when a page that step 0 said *has* a text layer comes
+back empty or garbled, re-read it with the built-in pdfium reader before escalating to
+OCR. A page is only replaced when pdfium returns something that is *not* garbage, so a
+genuinely mangled text layer (broken CID fonts) still falls through to OCR — the case
+OCR exists for. Cheapest step first is the ladder's whole point (SPEC §5.2).
+
+Measured on the first 6 pages of `6565dbb36c16dTenderdoc144.pdf`:
+
+| | outcome | time |
+|---|---|---|
+| before any fix | **parse failed entirely** | — |
+| picture fix only | 6 pages, 4 of them via OCR | 198 s |
+| with step 1b | 6 pages, **all via text layer** | **33 s** |
+
+Extrapolated, the full 283-page document goes from failing outright to roughly 25–30
+minutes. Still slow — Docling on CPU is the bottleneck, and that is worth revisiting —
+but it now *completes*, and every element carries its page and box.
+
+**Test note.** `test_ladder_reroutes_garbage_text_page_to_ocr` had to change, and it is
+worth saying why. It faked a garbage extraction on `digital.pdf`, whose text layer is
+actually clean — so under step 1b pdfium correctly recovers it and OCR is never called.
+Rather than relax the assertion, the test now runs against a new fixture whose text
+layer is *genuinely* unreadable (U+25A0 and friends, 114 chars, so step 0 still routes
+it to TEXT). Both original assertions stand unchanged, plus one more. The scenario the
+test was written for is now real instead of simulated.
+
+---
+
+## Session 2026-07-26 (b): single operator, bulk delete, portal links, Playwright
+
+### 5. Single-operator mode
+
+Roles are gone from the UI. `getRole()` returns a single constant `admin`, which
+outranks every acting floor in the backend, so one person does discovery, review,
+sign-off and export with nothing to switch. The pickers are removed from the
+landing page and the workspace header; the Admin screen now explains the mode
+instead of listing six roles.
+
+**Deliberately NOT removed:** `require_role`, the rank chain, and the audit log.
+SPEC §7 checkpoints and the sponsor's explicit ask for checkpoints 2–6 both depend
+on the gates existing and recording who approved what. Deleting them to satisfy
+"one person" would have traded a governance guarantee for a cosmetic one. There is
+simply one operator who satisfies every gate, and re-exposing the picker later is a
+frontend change with no backend work. Verified: no `require_role` endpoint is
+auditor-only, so `admin` passes all of them.
+
+### 6. Bulk delete
+
+`POST /tenders/bulk-delete` takes up to 200 ids and keeps every guarantee the
+single delete has: gated, an audit row per tender written *before* the cascade, and
+RLS scoping so ids outside the org are simply never found. Ids that no longer exist
+come back in `not_found` rather than failing the batch — a stale tab must not be
+able to break the action. Radar gets a select-all bar with an indeterminate state,
+per-card checkboxes, and a confirm modal that lists what is about to go.
+
+Also added the Modal's first tests (`apps/web/src/ui/overlays.test.tsx`). It is the
+last thing between a click and an irreversible delete and had no coverage.
+
+### 7. "Open on portal" gave "Invalid Url" — the links are tickets, not addresses
+
+Reported with a screenshot. Root cause found by decoding a stored link:
+
+```
+/cppp/tendersfullview/<b64>A13h1<b64>A13h1<b64>A13h1<b64>...
+  seg0 13984622                          listing id
+  seg1 8d6701a30e2a5210cb6a03a36caafa89  hash
+  seg3 1785012896                        unix timestamp = 2026-07-25T20:54:56Z
+```
+
+Verified live, three ways:
+1. GET the stored link → 200, body contains **"Invalid Url.Please Check"**.
+2. Scrape a *fresh* link and GET it immediately → **still invalid**.
+3. GET the listing page first (so the session cookie `SSESS…` is held), then the
+   same link → **resolves**.
+
+So the link is only valid inside the session that minted it. Handing it to the
+user's browser could never have worked.
+
+Fix: `app/services/portal_links.py` decides per portal whether a stored
+`portal_url` is durable. GeM links are; CPPP deep links are not and are replaced by
+the portal's stable search page (`/cppp/tendersearch`) plus a line naming the
+reference to search for. Off-portal or IP-literal hrefs are never offered as links
+at all — scraped markup does not get to choose where we send the user (SPEC §11.1).
+
+### 8. Playwright for both portals
+
+`bidproof_adapters/browser.py` now holds the shared renderer: lazy import, the
+GuardedFetcher allow-list enforced on **every** request the page makes, and
+`accept_downloads=False`. GeM uses it because its list is JS-rendered; CPPP uses it
+for the session, and falls back to plain HTTP with a logged warning when Playwright
+is missing — one adapter degrading, never discovery failing.
+
+### 9. Why scraping documents is hard — and where it is not
+
+The honest answer differs by portal, and it turned out better than expected.
+
+**GeM: documents are fetchable.** `bidplus.gem.gov.in/showbidDocument/<id>` answers
+`application/pdf` with `%PDF-` magic, no session, no cookie, no captcha. All 7
+scraped GeM tenders already had exactly that URL in `portal_url` — discovery just
+never used it, because `parse_bid_cards` never set `pdf_url` and the download
+branch in `discovery.py` was therefore dead code. Fixed, plus a new
+`POST /tenders/{id}/fetch-document`.
+
+Verified live on two real tenders: `GEM/2026/B/7594220` → 7 pages, and
+`GEM/2026/B/7725625` → 13 pages, both `status: succeeded`, Devanagari read
+correctly (`बड सं*या/ Bid Number : GEM/2026/B/7725625`).
+
+**CPPP: they are not.** Three separate obstacles, all confirmed:
+- detail links are session + timestamp bound, as above;
+- the detail page carries **no direct document link** — the only document-ish
+  hrefs on it are the portal's own STQC audit certificates;
+- documents route through `/cppp/downloaddisp`, a POST form, and the tender page
+  references a captcha. Bypassing a captcha is off the table, so this stops here
+  and the UI says so plainly.
+
+Fetching is human-triggered, never automatic: discovery still stops at metadata, so
+nobody wakes up to hundreds of megabytes of speculative downloads. `document_url()`
+is a deliberately narrow gate — known portal host **and** known document path —
+so a poisoned listing cannot become an SSRF primitive. It has its own tests,
+including lookalike hosts (`gem.gov.in.evil.com`) and scheme games.
+
+### 10. Docling placeholder comments were being stored as tender text
+
+Found while checking the first fetched GeM tender: elements 1 and 2 of page 1 were
+`<!-- 🖼️❌ Image not available. Please use PdfPipelineOptions(...) -->`. That is the
+*tool* narrating its own limits, and it would have been embedded, retrieved and
+quoted as if the tender said it. `item_text` now drops any render that is nothing
+but HTML comments, while keeping content that merely contains one. Re-fetch
+confirmed: 14,752 elements, **0 placeholders**, first element now
+`बड सं*या/ Bid`.
+
+### Verification
+
+- backend `pytest -m "not integration"`: **179 passed**
+- frontend `vitest`: **83 passed** (18 files), `tsc --noEmit` clean, build clean
+- new tests: 12 portal-link, 4 adapter, 2 bulk-delete (integration), 5 Modal,
+  1 Docling-placeholder
+- live UI walked: no role switcher, select-all + 16 checkboxes, CPPP cards showing
+  "Find on portal ↗" to the search page, GeM cards showing "⬇ Fetch its PDF",
+  fetched GeM cards showing "⚡ Process with AI"
+
+**Not verified in-harness:** modal dismissal. The Browser pane does not composite
+frames, so framer-motion's exit animation never completes and the node stays
+mounted — the *pre-existing* single-delete modal behaves identically there, so it is
+the harness, not the code. Covered by the new jsdom tests instead.
+
+---
+
+## Correction: the CPPP "fix" was itself a dead end
+
+Reported with a screenshot: every CPPP tender opened the same page. It did, and the
+first fix deserved the complaint — `stable_portal_url` fell back to CPPP's search
+form, so eight tenders all landed on one captcha. Functionally that is still broken,
+just broken somewhere else.
+
+Digging further found the obstacle is deeper than reported in §7. Checked live
+2026-07-26:
+
+| what was tried | result |
+|---|---|
+| stored deep link | *"Invalid Url.Please Check"* — session + timestamp bound |
+| freshly scraped deep link, no session | still invalid |
+| fresh link **with** the listing's session cookie | 200, no error banner… |
+| …but the page body | **no tender content** — only *"Enter the characters shown in the image"* |
+| `/cppp/rss`, `/cppp/rss/latestactivetenders` | 404 — there is no feed |
+| `/cppp/resultoftenders`, `/cppp/tendersearchbyproduct` | 404 |
+
+So §7 was half right. It is not only the *documents* that are gated — **CPPP's
+tender detail view is captcha-gated too.** The public listing is the entire
+captcha-free surface, and a captcha is a deliberate "no automation" sign, which we
+do not solve. There is no honest link to a CPPP tender, and no way to read one.
+
+What changed:
+- `stable_portal_url` returns **None** for CPPP. It no longer substitutes a search
+  page: a control labelled "open the tender" has to open the tender.
+- The manual route moved to `portal_search_url` + `requires_captcha`, so the UI can
+  warn before sending anyone there. The link now reads
+  **"Search manually (captcha) ↗"** and is styled as a secondary action.
+- Each CPPP card gains a one-click **copy-the-reference** button, so the manual
+  lookup is a paste rather than a hunt.
+- The hint says the whole truth: listing only, page and documents both behind a
+  captcha, so upload the PDF instead.
+
+Also checked, since it would have been a clean win: only **1 of 8** CPPP rows is
+really a GeM bid (`GEM/2026/B/7704484`), so cross-linking CPPP rows to GeM does not
+generalise and was not built.
+
+**Open question for Yuvraj:** 8 of 12 radar rows are CPPP and can never be
+processed. Worth deciding whether CPPP stays on as a discovery source (useful as a
+market signal — titles, references, closing dates) or comes off so the radar only
+shows tenders that can actually be worked. Not changed either way without a call.
+
+### Verification (this round)
+
+- backend `pytest -m "not integration"`: **179 passed**; frontend **83 passed**;
+  `tsc --noEmit` and build clean
+- live radar payload shapes: `cppp|doc=false|canFetch=false|direct=no|search=captcha`
+  ×8, `gem|doc=true|direct=YES` ×3, `manual` ×1
+- all 3 remaining GeM tenders now carry a real parsed document
+
+---
+
+## Checkpoint 3 asked a question with no answer box
+
+Reported: the Review Hub said *"Decide the verdicts the system would not guess — 10
+— blocks submission"*, the matrix showed ten rows badged **queued for human**, and
+clicking them did nothing.
+
+It did nothing because there was nothing there. `checks.py` had exactly four
+routes — POST /check, GET /verdicts, GET /matrix.xlsx, GET /risks — and
+`MatrixTable` had no control of any kind. `needs_human` was a state the product
+could enter and never leave. Golden rule 9 ("the human has the last word") was
+asserted in the copy and unimplemented in the code, and the export blocker counted
+those verdicts, so a tender could be permanently unsubmittable with no route
+forward.
+
+**Migration 0021** adds four columns to `verdicts`:
+
+| column | why |
+|---|---|
+| `system_verdict` | what the checker said, kept forever, so an override stays visible |
+| `decided_by` | who settled it |
+| `decided_at` | when |
+| `decided_reason` | why — required by the API, because an assertion with no reason is not evidence |
+
+`verdict` still holds the *effective* answer, which is what the matrix, the export
+blocker and the EV calculation read.
+
+**`POST /tenders/{id}/verdicts/{verdict_id}/decide`** takes `{verdict, reason,
+name}`. Design decisions worth stating:
+
+- `needs_human` is **rejected** as an answer (400). It is what is being resolved;
+  accepting it would be a way to make the review queue look clear while nothing was
+  decided.
+- The reason is required (422 on empty). The compliance matrix is the artefact a bid
+  is defended with.
+- The **first** machine verdict survives a second correction — correcting a
+  correction must not erase what the checker actually said.
+- The rule's proof (`el_id`, page, bbox) is untouched. The human decides what a
+  *cited* requirement means for this company; they never invent the requirement, so
+  golden rule 4 still holds.
+- Written to the append-only audit log as `verdict_decided_by_human`.
+
+**UI.** Each queued row gets a **Decide →** button (with `stopPropagation`, so it
+does not also fire click-to-proof). The form shows the requirement, a *"see it on
+page N ↗"* proof link, why it reached a human, the four allowed verdicts, and
+required reason + name; Record stays disabled until both are given. A settled row
+shows **"you decided · was needs_human"** — a human answer is never dressed up as a
+machine one.
+
+### Verification
+
+- Live, on the real tender `GEM/2026/B/7594220` (11 verdicts, 10 queued):
+  empty reason → **422**; `needs_human` → **400**; a real decision → **200** with
+  `system_verdict: needs_human`, proof chain intact, queue **10 → 9**.
+- Through the UI: 9 Decide buttons → filled the form → toast *"Recorded:
+  epbg_percentage is partial"*, buttons **9 → 8**, Review Hub count **10 → 8**.
+- backend `pytest -m "not integration"`: **179 passed**; frontend **87 passed**
+  (4 new matrix tests); `tsc` and build clean.
+- 2 new integration tests cover the happy path, both validation refusals, the audit
+  row, and the correct-a-correction case.
+
+**Note for Yuvraj:** verifying this recorded two real decisions on
+`GEM/2026/B/7594220` — `epbg_duration` → complies and `epbg_percentage` → partial,
+both under the name *"setup check"* with a reason saying it was a smoke test.
+Re-decide those two with your real answers; re-deciding is supported and keeps the
+original machine verdict.
+
+
+---
+
+## Developer ergonomics: inspect the reader, and run the demo from VS Code
+
+### `tools/inspect_pdf.py`
+
+There was no way to see what the reader ladder actually did to a file. Added a
+read-only tool that runs the same `get_ladder()` the API uses, so there is no
+second code path to drift:
+
+```
+python -m uv run --project apps/api python tools/inspect_pdf.py "<file.pdf>" --pages 1-5 --text
+```
+
+Prints which engines are live, the step-0 routing decision per page (character
+count → TEXT or OCR), the per-page result (route, status, confidence, elements,
+dropped), totals, and sample text with its bounding box. Forces UTF-8 on stdout —
+Windows consoles are cp1252 and a government tender is full of Devanagari, so
+without it the tool dies on its own output rather than on anything real.
+
+### `.vscode/tasks.json` and `launch.json`
+
+Ctrl+Shift+P → Run Task, or F5 to debug. **DEMO — start everything** is the one to
+press before a demo.
+
+**Bug in the first version, reported immediately:** the DEMO task used
+`dependsOrder: "sequence"` across all three tasks. A sequence waits for each task
+to *finish*, and a dev server never finishes — so it blocked on the API and never
+started Vite. Port 8000 came up, 5173 never did.
+
+Fixed by splitting it: infra is one-shot and genuinely completes, so it stays
+sequenced first; the two servers moved into a nested task with
+`dependsOrder: "parallel"`, which does not wait at all. Both servers also got a
+proper `background` problemMatcher (`Application startup complete` for uvicorn,
+`ready in` for Vite) so VS Code can tell a running server from a hung task.
+
+## Model probe reported DEGRADED when nothing was wrong
+
+Seen in the same terminal: `MODEL CHECK: DEGRADED … Broken roles: {'mid':
+'TimeoutError'}`. Called directly, `mid` answered in 3.3 s.
+
+Measured three rounds through the gateway: `mid` was 0.6 s every time, but
+**`small` took 21.7 s once** against a 25 s ceiling, and 2.3 s / 4.2 s the other
+times. Hosted providers are erratic under load; any role can trip it.
+
+`probe_roles` now gives a timeout **one retry**, and the ceiling moved 25 s → 45 s.
+A 402/401/403 is never retried — those are definitive, and retrying would only
+delay honest bad news. The large `max_tokens=1600` budget is unchanged: it is
+deliberate, because a small probe still succeeds on an exhausted balance while
+every real generation fails.
+
+Re-probed after the change: **mode `live`**, all three roles OK.
+
+### `tools/show_company.py`
+
+"What does BidProof actually know about Godrej?" had no answer short of writing
+SQL. Added a read-only companion to `inspect_pdf.py`:
+
+```
+python -m uv run --project apps/api python tools/show_company.py --company godrej
+python -m uv run --project apps/api python tools/show_company.py --company godrej --gaps
+```
+
+Prints the radar profile, every company fact **with its own source line**, the
+product catalogue, and then a GAPS section — because when a verdict says "needs
+human", the cause is almost always a missing field here rather than a fault.
+
+For Godrej today: 9 facts, 12 products, and **12 of 12 products with no lead time
+and no price band, 9 of 9 facts with no expiry date.** That is precisely why the
+matrix showed 10 of 11 rules queued for a human — the checker abstains instead of
+guessing (SPEC §9 rule 3), exactly as designed.
+
+Two bugs found writing it, both fixed:
+- the gap counter used `is None` while the display used truthiness, so
+  `price_band_inr = {}` printed UNKNOWN yet counted as present — 0 of 12 instead
+  of 12 of 12. Both now share one `missing()` predicate.
+- `--gaps` was declared in `argparse` and never honoured; it printed the full
+  155-line dump. Now 18 lines.
+
+Both tools are wired as VS Code tasks (**Company data** / **Company gaps**), which
+prompt for the company name.
