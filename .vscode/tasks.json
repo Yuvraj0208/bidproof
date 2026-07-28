@@ -1,0 +1,175 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BidProof: 0 — Infra up (Docker)",
+      "detail": "Postgres, Redis, MinIO, ClickHouse, Langfuse, LiteLLM. Run once; leave running.",
+      "type": "shell",
+      "command": "docker compose -f infra/docker-compose.yml --env-file .env up -d",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "BidProof: 1 — API (port 8000)",
+      "detail": "FastAPI with --reload, so code edits are picked up without a restart.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api uvicorn app.main:app --reload --port 8000",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "bidproof",
+        "pattern": {
+          "regexp": "^(?!)$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*(Will watch for changes|Started reloader).*",
+          "endsPattern": ".*Application startup complete.*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "demo"
+      }
+    },
+    {
+      "label": "BidProof: 2 — Web (port 5173)",
+      "detail": "Vite dev server. Open http://localhost:5173 once it is up.",
+      "type": "shell",
+      "command": "npm --prefix apps/web run dev",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "bidproof",
+        "pattern": {
+          "regexp": "^(?!)$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*(VITE|vite).*",
+          "endsPattern": ".*(ready in|localhost:5173).*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "demo"
+      }
+    },
+    {
+      "label": "BidProof: servers (API + Web together)",
+      "detail": "Helper for the DEMO task: starts both servers at once.",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "BidProof: 1 — API (port 8000)",
+        "BidProof: 2 — Web (port 5173)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "BidProof: DEMO — start everything",
+      "detail": "Infra first (it finishes), then API and Web side by side. Press this before a demo.",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "BidProof: 0 — Infra up (Docker)",
+        "BidProof: servers (API + Web together)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "BidProof: Inspect a PDF (what the reader saw)",
+      "detail": "Step-0 routing + per-page result + sample text with boxes. Touches no data.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python tools/inspect_pdf.py \"${input:pdfPath}\" --pages ${input:pdfPages} --text",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Company data (what we know about them)",
+      "detail": "Facts, products and their sources — plus what is missing. Read-only.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python tools/show_company.py --company \"${input:companyName}\"",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Company gaps (why rules need a human)",
+      "detail": "Just the missing fields — the short version.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python tools/show_company.py --company \"${input:companyName}\" --gaps",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Tests (fast, no Docker needed)",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python -m pytest -m \"not integration\" -q",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Tests (frontend)",
+      "type": "shell",
+      "command": "npm --prefix apps/web run test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Infra down",
+      "detail": "Stops the containers. Your data survives — it lives in Docker volumes.",
+      "type": "shell",
+      "command": "docker compose -f infra/docker-compose.yml --env-file .env down",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "pdfPath",
+      "type": "promptString",
+      "description": "Full path to the PDF to inspect",
+      "default": "C:\\Users\\syuvr\\Desktop\\6565dbb36c16dTenderdoc144.pdf"
+    },
+    {
+      "id": "pdfPages",
+      "type": "promptString",
+      "description": "Which pages? e.g. 1-5 or 2,7 (a big tender takes minutes if you ask for all)",
+      "default": "1-5"
+    },
+    {
+      "id": "companyName",
+      "type": "promptString",
+      "description": "Company name (part of it is enough; blank shows all)",
+      "default": "godrej"
+    }
+  ]
+}
