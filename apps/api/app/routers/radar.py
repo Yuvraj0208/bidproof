@@ -9,9 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.services import portal_links
 from app.core.db import org_scoped_session
 from app.core.tenancy import require_org_id
-from app.models import Tender
+from app.models import Document, Tender
 from app.services import triage as triage_service
 
 router = APIRouter()
@@ -32,6 +33,21 @@ class RadarCard(BaseModel):
     matched_category: str | None
     reasons: list[str]
     checkpoint0: str | None
+    # Portal listings carry metadata only — the PDF sits behind a session. The
+    # UI needs to know, so it can point at the portal instead of offering a
+    # "Process with AI" that can only 409.
+    has_document: bool = False
+    # A link that still resolves when the human clicks it, plus a line telling
+    # them what to do when the portal's own link has expired (portal_links).
+    portal_url: str | None = None
+    # The manual route, kept separate because on CPPP it costs a captcha — the
+    # UI must warn before sending anyone there.
+    portal_search_url: str | None = None
+    portal_requires_captcha: bool = False
+    portal_hint: str | None = None
+    # Whether the portal will hand us the PDF directly. GeM will; CPPP will not.
+    # Decided here so the UI never has to know one portal from another.
+    can_fetch_document: bool = False
 
 
 class ResolveIn(BaseModel):
@@ -55,7 +71,16 @@ async def radar(
         )
         if list_name:
             query = query.where(Tender.radar_list == list_name)
-        tenders = (await session.execute(query)).scalars()
+        tenders = list((await session.execute(query)).scalars())
+        with_docs = set(
+            (
+                await session.execute(
+                    select(Document.tender_id).where(
+                        Document.tender_id.in_([t.id for t in tenders] or [None])
+                    )
+                )
+            ).scalars()
+        )
 
         return [
             RadarCard(
@@ -71,6 +96,17 @@ async def radar(
                 matched_category=(t.triage or {}).get("matched_category"),
                 reasons=(t.triage or {}).get("reasons", []),
                 checkpoint0=(t.triage or {}).get("checkpoint0"),
+                has_document=t.id in with_docs,
+                portal_url=portal_links.stable_portal_url(t.source, t.portal_url),
+                portal_search_url=portal_links.portal_search_url(t.source),
+                portal_requires_captcha=portal_links.requires_captcha(t.source),
+                portal_hint=portal_links.portal_hint(
+                    t.source, t.external_id, t.portal_url
+                ),
+                can_fetch_document=(
+                    t.id not in with_docs
+                    and portal_links.document_url(t.source, t.portal_url) is not None
+                ),
             )
             for t in tenders
         ]

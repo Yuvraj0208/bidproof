@@ -5,9 +5,10 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from app.services import portal_links
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
 from app.core.roles import Role, require_role
@@ -57,6 +58,14 @@ class TenderDetailOut(BaseModel):
     created_at: datetime
     parse: ParseSummary | None
     pages: list[PageOut]
+    # A scraped portal listing has metadata but no PDF — the document sits
+    # behind a portal session. Say so, rather than showing empty panels.
+    has_document: bool = False
+    portal_url: str | None = None
+    portal_search_url: str | None = None
+    portal_requires_captcha: bool = False
+    portal_hint: str | None = None
+    can_fetch_document: bool = False
 
 
 class BBoxOut(BaseModel):
@@ -218,6 +227,20 @@ async def get_tender(
             created_at=tender.created_at,
             parse=parse,
             pages=pages,
+            has_document=document is not None,
+            portal_url=portal_links.stable_portal_url(
+                tender.source, tender.portal_url
+            ),
+            portal_search_url=portal_links.portal_search_url(tender.source),
+            portal_requires_captcha=portal_links.requires_captcha(tender.source),
+            portal_hint=portal_links.portal_hint(
+                tender.source, tender.external_id, tender.portal_url
+            ),
+            can_fetch_document=(
+                document is None
+                and portal_links.document_url(tender.source, tender.portal_url)
+                is not None
+            ),
         )
 
 
@@ -346,3 +369,162 @@ async def delete_tender(
             await session.delete(tender)
 
     return {"deleted": str(tender_id), "title": title}
+
+
+class BulkDeleteIn(BaseModel):
+    tender_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class BulkDeleteOut(BaseModel):
+    deleted: list[uuid.UUID]
+    not_found: list[uuid.UUID]
+
+
+@router.post("/tenders/bulk-delete", response_model=BulkDeleteOut)
+async def bulk_delete_tenders(
+    body: BulkDeleteIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+    role: Role = Depends(require_role(Role.BID_HEAD)),
+) -> BulkDeleteOut:
+    """Clear a whole selection of tenders in one action.
+
+    Portal discovery brings in far more noise than anyone wants to dismiss one
+    row at a time. The guarantees of the single delete all still hold per
+    tender: an audit row is written BEFORE the cascade, ids outside the caller's
+    org are simply never found (RLS scopes the session), and no agent can reach
+    this — it is human-only (repo golden rule 8).
+
+    Ids that do not exist are reported back rather than failing the batch, so a
+    stale tab cannot make the whole action fail.
+    """
+    # De-duplicate while keeping the caller's order, so the audit log reads the
+    # way the human actually selected.
+    wanted = list(dict.fromkeys(body.tender_ids))
+
+    deleted: list[uuid.UUID] = []
+    not_found: list[uuid.UUID] = []
+
+    async with org_scoped_session(org_id) as session:
+        for tender_id in wanted:
+            tender = await session.get(Tender, tender_id)
+            if tender is None:
+                not_found.append(tender_id)
+                continue
+            session.add(AuditLog(
+                org_id=org_id, tender_id=tender_id, actor=role.value,
+                action="tender_deleted",
+                details={"title": tender.title, "source": tender.source,
+                         "batch": len(wanted)},
+            ))
+            deleted.append(tender_id)
+
+    # Second transaction, so every audit row is committed before anything goes.
+    async with org_scoped_session(org_id) as session:
+        for tender_id in deleted:
+            tender = await session.get(Tender, tender_id)
+            if tender is not None:
+                await session.delete(tender)
+
+    return BulkDeleteOut(deleted=deleted, not_found=not_found)
+
+
+class FetchDocumentOut(BaseModel):
+    tender_id: uuid.UUID
+    document_id: uuid.UUID
+    pages: int
+    status: str
+
+
+@router.post("/tenders/{tender_id}/fetch-document", response_model=FetchDocumentOut)
+async def fetch_portal_document(
+    tender_id: uuid.UUID,
+    org_id: uuid.UUID = Depends(require_org_id),
+    role: Role = Depends(require_role(Role.BID_EXECUTIVE)),
+    ladder=Depends(get_ladder),
+    parse_logger=Depends(get_parse_logger),
+) -> FetchDocumentOut:
+    """Pull a portal-hosted tender document and read it.
+
+    Only GeM qualifies today: it serves `/showbidDocument/<id>` as a plain PDF
+    with no session, cookie or captcha. CPPP routes its documents through a POST
+    form instead, so there is nothing here to fetch — `portal_links.document_url`
+    is the gate, and it says no.
+
+    Human-triggered on purpose. Discovery deliberately stops at metadata, so
+    nobody wakes up to a few hundred megabytes of speculatively downloaded PDFs;
+    a person asks for the tender they actually care about, and the act is
+    audited.
+    """
+    from bidproof_adapters import GuardedFetcher
+
+    from app.services import discovery as discovery_service
+
+    async with org_scoped_session(org_id) as session:
+        tender = await session.get(Tender, tender_id)
+        if tender is None:
+            raise HTTPException(404, "tender not found")
+        source, portal_url, external_id = (
+            tender.source, tender.portal_url, tender.external_id,
+        )
+
+    url = portal_links.document_url(source, portal_url)
+    if url is None:
+        raise HTTPException(
+            409,
+            f"{source.upper()} does not publish a directly fetchable document for "
+            "this tender — download it from the portal and upload the PDF here",
+        )
+
+    settings = get_settings()
+    fetcher = GuardedFetcher(discovery_service.build_allowlist())
+    try:
+        data = await fetcher.download(url)
+    except Exception as exc:
+        raise HTTPException(502, f"could not fetch the document: {exc}")
+    finally:
+        await fetcher.aclose()
+
+    try:
+        ingest.validate_pdf_upload(data, settings.max_upload_mb * 1024 * 1024)
+    except ingest.UploadValidationError as error:
+        # The portal answered with something that is not a usable PDF. Say so
+        # rather than storing it and failing later.
+        raise HTTPException(502, f"the portal did not return a usable PDF: {error.detail}")
+
+    try:
+        document_id, parse_run_id = await ingest.add_document_to_tender(
+            org_id,
+            tender_id,
+            filename=f"{(external_id or str(tender_id)).replace('/', '_')}.pdf",
+            data=data,
+            storage=ObjectStorage(settings),
+            # This is the tender's own document, not a corrigendum — the schema
+            # allows 'original' | 'corrigendum' (migration 0010).
+            kind="original",
+        )
+    except ingest.DuplicateDocumentError:
+        raise HTTPException(409, "this document is already attached")
+
+    await ingest.execute_parse_run(
+        org_id=org_id,
+        tender_id=tender_id,
+        document_id=document_id,
+        parse_run_id=parse_run_id,
+        pdf_bytes=data,
+        ladder=ladder,
+        parse_logger=parse_logger,
+    )
+    await triage_service.triage_after_parse(org_id, tender_id)
+
+    async with org_scoped_session(org_id) as session:
+        run = await session.get(ParseRun, parse_run_id)
+        pages, status = (run.pages_total or 0), run.status
+        session.add(AuditLog(
+            org_id=org_id, tender_id=tender_id, actor=role.value,
+            action="portal_document_fetched",
+            details={"url": url, "pages": pages, "bytes": len(data)},
+        ))
+
+    return FetchDocumentOut(
+        tender_id=tender_id, document_id=document_id, pages=pages, status=status,
+    )

@@ -22,6 +22,11 @@ _END_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _TAG_RE = re.compile(r"<[^>]+>")
+# GeM serves bid documents straight from this path as application/pdf — no
+# session, cookie or captcha (verified live 2026-07-26). When a card links one,
+# that link IS the document, so it becomes `pdf_url` and the tender arrives
+# readable instead of as bare metadata.
+_DOC_HREF_RE = re.compile(r"/showbidDocument/\d+", re.IGNORECASE)
 
 
 def _clean(text: str) -> str:
@@ -55,9 +60,17 @@ def parse_bid_cards(html: str, base_url: str) -> list[DiscoveredTender]:
                     title = candidate
 
         url = base_url
-        href_match = _HREF_RE.search(chunk)
-        if href_match:
-            url = urljoin(base_url, unescape(href_match.group(1)))
+        pdf_url = None
+        for raw_href in _HREF_RE.findall(chunk):
+            href = urljoin(base_url, unescape(raw_href))
+            if _DOC_HREF_RE.search(href):
+                pdf_url = href
+            elif url == base_url:
+                url = href
+        # A card that only carries the document link should still point
+        # somewhere useful, rather than back at the whole bid list.
+        if url == base_url and pdf_url:
+            url = pdf_url
 
         closing_at = None
         end_match = _END_DATE_RE.search(chunk)
@@ -76,6 +89,7 @@ def parse_bid_cards(html: str, base_url: str) -> list[DiscoveredTender]:
                 external_id=bid_no,
                 title=title,
                 url=url,
+                pdf_url=pdf_url,
                 closing_at=closing_at,
             )
         )

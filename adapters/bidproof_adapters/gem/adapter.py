@@ -1,28 +1,26 @@
 """GeM adapter — the bid list is JS-rendered, so it needs Playwright
 (optional `gem` extra; `playwright install chromium` once).
 
-Isolation and least privilege:
-- Playwright is imported lazily. If it is missing, `discover` raises and the
-  Scout records THIS adapter as failed while every other adapter continues.
-- The browser context blocks every request whose host fails the same
-  allow-list the GuardedFetcher enforces — the browser cannot be steered
-  off the portal, even by the portal's own markup.
+Unlike CPPP, GeM publishes its bid documents as plain, durable PDFs:
+`bidplus.gem.gov.in/showbidDocument/<id>` answers with `application/pdf` and no
+session, cookie or captcha (verified live 2026-07-26). So GeM tenders can arrive
+with a real document attached, which is why `parse_bid_cards` fills `pdf_url`.
+
+Isolation and least privilege live in `bidproof_adapters.browser`: Playwright is
+imported lazily, and every request the page makes is checked against the same
+allow-list the GuardedFetcher enforces.
 """
 
+from bidproof_adapters.browser import playwright_available, render  # noqa: F401
 from bidproof_adapters.contract import DiscoveredTender
 from bidproof_adapters.gem.parsing import parse_bid_cards
-from bidproof_adapters.guard import BlockedDomainError, GuardedFetcher
+from bidproof_adapters.guard import GuardedFetcher
 
 DEFAULT_BIDS_URL = "https://bidplus.gem.gov.in/all-bids"
 
-
-def playwright_available() -> bool:
-    try:
-        import playwright  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
+# Stable entry point for a human to search from, when a specific bid link is
+# no longer good.
+SEARCH_URL = DEFAULT_BIDS_URL
 
 
 class GemAdapter:
@@ -34,28 +32,5 @@ class GemAdapter:
 
     async def discover(self, fetcher: GuardedFetcher) -> list[DiscoveredTender]:
         fetcher.allowlist.check(self._bids_url)
-        html = await self._render_page(fetcher)
+        html = await render(self._bids_url, fetcher)
         return parse_bid_cards(html, base_url=self._bids_url)
-
-    async def _render_page(self, fetcher: GuardedFetcher) -> str:
-        from playwright.async_api import async_playwright
-
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            try:
-                context = await browser.new_context()
-
-                async def enforce_allowlist(route):
-                    try:
-                        fetcher.allowlist.check(route.request.url)
-                    except BlockedDomainError:
-                        await route.abort()
-                    else:
-                        await route.continue_()
-
-                await context.route("**/*", enforce_allowlist)
-                page = await context.new_page()
-                await page.goto(self._bids_url, wait_until="networkidle")
-                return await page.content()
-            finally:
-                await browser.close()

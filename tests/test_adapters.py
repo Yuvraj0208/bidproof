@@ -170,3 +170,65 @@ async def test_one_adapter_throwing_does_not_stop_the_others():
     failed = report.runs[0]
     assert not failed.ok
     assert "portal redesigned" in failed.error
+
+
+# --- GeM documents are durable; CPPP links are session tickets ---------------
+
+
+def test_gem_card_exposes_the_document_link_as_pdf_url():
+    """GeM serves `/showbidDocument/<id>` as application/pdf with no session,
+    cookie or captcha (verified live 2026-07-26). That link IS the document, so
+    discovery can attach it and the tender arrives readable instead of as bare
+    metadata."""
+    html = (FIXTURES / "gem_bids.html").read_text(encoding="utf-8")
+    tenders = parse_bid_cards(html, base_url="https://bidplus.gem.gov.in/all-bids")
+
+    assert tenders[0].pdf_url == "https://bidplus.gem.gov.in/showbidDocument/7811223"
+    assert all(t.pdf_url for t in tenders)
+
+
+def test_gem_card_without_a_document_link_claims_no_pdf():
+    """No link means no document. The parser never invents one (§9 rule 3)."""
+    html = (
+        '<div class="card"><span>GEM/2026/B/9999999</span>'
+        '<div data-title="Bid with no document yet"></div></div>'
+    )
+    tenders = parse_bid_cards(html, base_url="https://bidplus.gem.gov.in/all-bids")
+
+    assert len(tenders) == 1
+    assert tenders[0].pdf_url is None
+
+
+async def test_cppp_falls_back_to_plain_http_without_a_browser():
+    """Playwright missing must degrade this ONE adapter, never fail discovery."""
+    from bidproof_adapters.cppp.adapter import CpppAdapter
+
+    feed = (FIXTURES / "cppp_page.html").read_text(encoding="utf-8")
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, text=feed)
+
+    fetcher = GuardedFetcher(
+        ALLOW, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    # use_browser=False is the same path a missing Playwright install takes.
+    tenders = await CpppAdapter(use_browser=False).discover(fetcher)
+
+    assert calls, "the plain-HTTP fallback should have been used"
+    assert tenders, "the listing should still parse without a browser"
+    await fetcher.aclose()
+
+
+async def test_cppp_still_refuses_an_off_portal_feed_url():
+    """The allow-list is checked before either path runs."""
+    from bidproof_adapters.cppp.adapter import CpppAdapter
+
+    fetcher = GuardedFetcher(ALLOW)
+    with pytest.raises(BlockedDomainError):
+        await CpppAdapter(
+            "https://evil.example.com/feed", use_browser=False
+        ).discover(fetcher)
+    await fetcher.aclose()
