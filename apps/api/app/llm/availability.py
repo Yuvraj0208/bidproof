@@ -26,7 +26,7 @@ _PROBE = [{"role": "user", "content": "Reply with the single word: OK"}]
 _status: dict | None = None
 
 
-async def probe_roles(timeout_s: float = 25.0) -> dict:
+async def probe_roles(timeout_s: float = 45.0) -> dict:
     """Ask every role for a reply. Returns per-role health + overall mode.
 
     The budget below is deliberately close to what the writer actually asks
@@ -34,30 +34,18 @@ async def probe_roles(timeout_s: float = 25.0) -> dict:
     afford `max_tokens` up front, so a 200-token probe still succeeds on an
     exhausted balance while every real generation fails with 402 — the UI would
     show "live" while the pipeline silently served templates.
+
+    A timeout gets ONE retry. Hosted providers are erratic under load — the same
+    role was measured at 0.6 s and 21.7 s minutes apart — and a single slow reply
+    was enough to paint the whole app DEGRADED before a demo when nothing was
+    wrong. A 402 or an auth failure is never retried: those are definitive
+    answers, and retrying them would only slow down the honest bad news.
     """
     gateway = LLMGateway()
     roles: dict[str, dict] = {}
     try:
         for role in sorted(ROLES):
-            try:
-                async with asyncio.timeout(timeout_s):
-                    response = await gateway.complete(
-                        role, messages=_PROBE, max_tokens=1600
-                    )
-                # A probe only proves the role answers, so reasoning text counts here.
-                extract_text(response, allow_reasoning=True)
-                roles[role] = {"ok": True, "model": response.get("model"), "error": None}
-            except Exception as exc:
-                detail = f"{type(exc).__name__}: {str(exc)[:160]}"
-                # The most common real-world cause, named plainly so the UI can
-                # tell the operator what to actually do about it.
-                if "402" in str(exc) or "Payment Required" in str(exc):
-                    detail = (
-                        "no model credit — the provider refused the request "
-                        "(402 Payment Required). Top up the account behind the "
-                        "gateway; until then results come from templates."
-                    )
-                roles[role] = {"ok": False, "model": None, "error": detail}
+            roles[role] = await _probe_one(gateway, role, timeout_s)
     finally:
         await gateway.aclose()
 
@@ -66,6 +54,51 @@ async def probe_roles(timeout_s: float = 25.0) -> dict:
         "degraded" if healthy else "deterministic"
     )
     return {"mode": mode, "roles": roles, "healthy": sorted(healthy)}
+
+
+def _is_definitive(exc: Exception) -> bool:
+    """Errors a retry cannot change: no credit, bad key, unknown model."""
+    text = str(exc)
+    return any(
+        marker in text
+        for marker in ("402", "Payment Required", "401", "403", "invalid_api_key")
+    )
+
+
+async def _probe_one(gateway: LLMGateway, role: str, timeout_s: float) -> dict:
+    last: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            async with asyncio.timeout(timeout_s):
+                response = await gateway.complete(role, messages=_PROBE, max_tokens=1600)
+            # A probe only proves the role answers, so reasoning text counts here.
+            extract_text(response, allow_reasoning=True)
+            if attempt > 1:
+                logger.warning("role %s answered on retry after a timeout", role)
+            return {"ok": True, "model": response.get("model"), "error": None}
+        except Exception as exc:
+            last = exc
+            if _is_definitive(exc) or attempt == 2:
+                break
+            logger.warning(
+                "role %s did not answer within %.0fs; retrying once", role, timeout_s
+            )
+
+    detail = f"{type(last).__name__}: {str(last)[:160]}"
+    # The most common real-world cause, named plainly so the UI can tell the
+    # operator what to actually do about it.
+    if _is_definitive(last) and ("402" in str(last) or "Payment Required" in str(last)):
+        detail = (
+            "no model credit — the provider refused the request "
+            "(402 Payment Required). Top up the account behind the "
+            "gateway; until then results come from templates."
+        )
+    elif isinstance(last, TimeoutError):
+        detail = (
+            f"the gateway did not answer within {timeout_s:.0f}s, twice. "
+            "The provider may be overloaded — retry, or check the gateway."
+        )
+    return {"ok": False, "model": None, "error": detail}
 
 
 async def refresh() -> dict:
