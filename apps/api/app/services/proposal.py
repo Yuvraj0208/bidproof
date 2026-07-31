@@ -535,6 +535,60 @@ async def approve_section(
         return _section_dict(section), None
 
 
+async def approve_sections(
+    org_id: uuid.UUID, tender_id: uuid.UUID,
+    section_ids: list[uuid.UUID], name: str,
+) -> tuple[dict | None, str | None]:
+    """Approve several sections at once, under one name (Checkpoint 5).
+
+    Sections carrying an unresolved flag are skipped rather than approved, and
+    reported back by name. That is not the old refusal in disguise: a flagged
+    claim can now be dropped or accepted in the same screen, so this is a
+    step the operator can clear, not a wall.
+    """
+    if len(name.strip()) < 2:
+        return None, "a name is required — an approval is attributable"
+    if not section_ids:
+        return None, "no sections selected"
+
+    approved: list[str] = []
+    skipped: list[dict] = []
+    async with org_scoped_session(org_id) as session:
+        sections = (
+            await session.execute(
+                select(ProposalSection).where(
+                    ProposalSection.id.in_(section_ids)
+                )
+            )
+        ).scalars().all()
+
+        for section in sections:
+            if section.org_id != org_id:
+                continue
+            flags = open_flags(section.claims or [])
+            if flags:
+                skipped.append({
+                    "section": section.section_tag,
+                    "reason": f"{len(flags)} unresolved flag(s)",
+                })
+                continue
+            if section.approved:
+                continue
+            section.approved = True
+            section.approved_by = name.strip()
+            section.approved_at = datetime.now(timezone.utc)
+            approved.append(section.section_tag)
+
+        session.add(AuditLog(
+            org_id=org_id, tender_id=tender_id, actor=name.strip(),
+            action="proposal_sections_approved",
+            details={"approved": approved, "skipped": skipped},
+        ))
+        await session.flush()
+
+    return {"approved": approved, "skipped": skipped}, None
+
+
 async def readiness(org_id: uuid.UUID, tender_id: uuid.UUID) -> dict | None:
     async with org_scoped_session(org_id) as session:
         proposal = (

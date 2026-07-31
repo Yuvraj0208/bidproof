@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   amendTender,
   approveSection,
+  approveSections,
   resolveClaim,
   askChat,
   attachChecklistFile,
@@ -241,6 +242,23 @@ export function Workspace({
     } catch (e) {
       // The refusal used to be swallowed here, so a section that could not be
       // approved looked like a button that did nothing.
+      push(`Could not approve: ${String(e)}`, "danger");
+    } finally {
+      load();
+    }
+  };
+
+  const handleApproveSections = async (sectionIds: string[], name: string) => {
+    try {
+      const out = await approveSections(tenderId, sectionIds, name);
+      const skipped = out.skipped.length
+        ? ` ${out.skipped.length} skipped (${out.skipped
+            .map((s) => s.section)
+            .join(", ")}) — resolve their flags.`
+        : "";
+      push(`${out.approved.length} section(s) approved.${skipped}`,
+           out.skipped.length ? "warning" : "success");
+    } catch (e) {
       push(`Could not approve: ${String(e)}`, "danger");
     } finally {
       load();
@@ -620,6 +638,7 @@ export function Workspace({
             onGenerate={handleDraftProposal}
             onApprove={handleApproveSection}
             onResolveClaim={handleResolveClaim}
+            onApproveMany={handleApproveSections}
             busy={writing}
           />
         </div>

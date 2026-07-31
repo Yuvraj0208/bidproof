@@ -1,7 +1,12 @@
 // Proposal Studio (US-09 + US-11): the draft, section by section, with a
-// per-claim badge, three per-section scores, and INDIVIDUAL approval —
-// there is deliberately no "approve all" button, and a section with an open
-// flag cannot be approved until it is resolved.
+// per-claim badge, three per-section scores, and approval by selection — tick
+// the sections, give your name once, approve.
+//
+// A section with an unresolved flag is not selectable. That is not the old
+// dead end: a flagged claim can be dropped or accepted right here, so it is a
+// step to clear rather than a wall. Approval is still recorded against each
+// section individually, and skipped sections are named back rather than
+// quietly left out.
 import { useState } from "react";
 import type { Proposal, ProposalClaim, ProposalSection } from "../api";
 
@@ -121,6 +126,7 @@ export function ProposalPanel({
   onGenerate,
   onApprove,
   onResolveClaim,
+  onApproveMany,
   busy,
 }: {
   proposal: Proposal | null;
@@ -133,11 +139,10 @@ export function ProposalPanel({
     by: string,
     reason: string,
   ) => void;
+  onApproveMany?: (sectionIds: string[], name: string) => void;
   busy: boolean;
 }) {
-  // Remembered across reloads. Approving stays one deliberate act per section
-  // (SPEC §3.2 US-11: "No single 'approve all' button"), but re-typing your
-  // name seven times is friction that protects nothing.
+  // Remembered across reloads, so the name is typed once per machine.
   const [name, setName] = useState(
     () => localStorage.getItem("bidproof.approver") ?? "",
   );
@@ -145,6 +150,7 @@ export function ProposalPanel({
     setName(value);
     localStorage.setItem("bidproof.approver", value);
   };
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const approvedCount = proposal?.sections.filter((s) => s.approved).length ?? 0;
   const ready =
     proposal != null &&
@@ -153,6 +159,30 @@ export function ProposalPanel({
 
   const canApprove = (section: ProposalSection) =>
     name.trim().length >= 2 && !section.approved && section.open_flags.length === 0;
+
+  // Selectable = not already approved, and nothing left to resolve. A flagged
+  // section stays out of the selection so a bulk approval can never sign off a
+  // sentence the FactChecker contradicted.
+  const selectable = (proposal?.sections ?? []).filter(
+    (s) => !s.approved && s.open_flags.length === 0,
+  );
+  const allSelected =
+    selectable.length > 0 && selectable.every((s) => selected.has(s.id));
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(selectable.map((s) => s.id)));
+
+  const blockedCount =
+    (proposal?.sections ?? []).filter(
+      (s) => !s.approved && s.open_flags.length > 0,
+    ).length;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-6">
@@ -193,6 +223,37 @@ export function ProposalPanel({
         />
       )}
 
+      {proposal && onApproveMany && selectable.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-hairline bg-white p-3">
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              data-testid="select-all-sections"
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+            />
+            Select all ({selectable.length})
+          </label>
+          <button
+            data-testid="approve-selected"
+            disabled={selected.size === 0 || name.trim().length < 2 || busy}
+            title={
+              name.trim().length < 2 ? "enter your name first" : undefined
+            }
+            onClick={() => onApproveMany([...selected], name.trim())}
+            className="rounded-[8px] bg-indigo px-3 py-1 text-sm font-medium text-white disabled:opacity-40"
+          >
+            Approve {selected.size} selected
+          </button>
+          {blockedCount > 0 && (
+            <span data-testid="blocked-note" className="text-xs text-ink-muted">
+              {blockedCount} section(s) not selectable — resolve their flags
+              below first
+            </span>
+          )}
+        </div>
+      )}
+
       {proposal?.sections.map((section) => (
         <article
           key={section.id}
@@ -200,6 +261,20 @@ export function ProposalPanel({
           className={`rounded-[12px] border bg-white p-4 ${section.approved ? "border-success/40" : "border-hairline"}`}
         >
           <div className="mb-2 flex flex-wrap items-center gap-2">
+            {onApproveMany && !section.approved && (
+              <input
+                data-testid={`select-${section.section_tag}`}
+                type="checkbox"
+                checked={selected.has(section.id)}
+                disabled={section.open_flags.length > 0}
+                title={
+                  section.open_flags.length
+                    ? "resolve this section's flags before approving it"
+                    : undefined
+                }
+                onChange={() => toggle(section.id)}
+              />
+            )}
             <span className="text-sm font-medium text-ink">
               {section.section_tag.replace(/_/g, " ")}
             </span>

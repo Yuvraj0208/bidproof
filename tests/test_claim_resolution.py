@@ -116,6 +116,20 @@ def test_dropping_needs_no_reason():
     assert proposal_service.validate_resolution("drop", "Yuvraj", "") is None
 
 
+# --- approving a selection (US-11) ----------------------------------------
+
+
+async def test_bulk_approval_needs_a_name():
+    """One name covers the selection, but there still has to be one."""
+    _, error = await proposal_service.approve_sections(None, None, ["s-1"], "")
+    assert error is not None and "name is required" in error
+
+
+async def test_bulk_approval_needs_a_selection():
+    _, error = await proposal_service.approve_sections(None, None, [], "Yuvraj")
+    assert error is not None and "no sections selected" in error
+
+
 def test_accepting_with_a_real_reason_is_allowed():
     assert proposal_service.validate_resolution(
         "accept", "Yuvraj", "ISO cert renewed last week, not yet in the database"

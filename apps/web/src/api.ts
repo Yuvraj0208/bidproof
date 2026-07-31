@@ -312,6 +312,22 @@ export const approveSection = (tenderId: string, sectionId: string, name: string
     },
   );
 
+/** Approve the selected sections under one name (Checkpoint 5).
+ *  Sections with unresolved flags come back in `skipped` rather than approved. */
+export const approveSections = (
+  tenderId: string,
+  sectionIds: string[],
+  name: string,
+) =>
+  request<{ approved: string[]; skipped: { section: string; reason: string }[] }>(
+    `/tenders/${tenderId}/proposal/approve-sections`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ section_ids: sectionIds, name }),
+    },
+  );
+
 /** Resolve one flagged claim so its section can be approved (Checkpoint 5). */
 export const resolveClaim = (
   tenderId: string,

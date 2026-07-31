@@ -74,8 +74,9 @@ describe("ProposalPanel", () => {
     fireEvent.click(clean);
     expect(onApprove).toHaveBeenCalledWith("s-1", "Priya N");
 
-    // there is no single control that approves everything at once
-    expect(screen.queryByText(/approve all/i)).toBeNull();
+    // Per-section approval still works on its own; the selection bar only
+    // appears when the panel is given a bulk handler.
+    expect(screen.queryByTestId("approve-selected")).toBeNull();
   });
 
   it("blocks approval of a section with an open flag even with a name", () => {
@@ -107,6 +108,41 @@ describe("ProposalPanel", () => {
     render(<ProposalPanel proposal={null} onGenerate={() => {}}
                           onApprove={() => {}} busy={false} />);
     expect(screen.getByText(/once the decision is GO/)).toBeInTheDocument();
+  });
+
+  it("selects sections and approves them with one button and one name", () => {
+    const onApproveMany = vi.fn();
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onApproveMany={onApproveMany}
+                          busy={false} />);
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+
+    // Only the clean section is selectable; the flagged one is not.
+    fireEvent.click(screen.getByTestId("select-all-sections"));
+    fireEvent.click(screen.getByTestId("approve-selected"));
+
+    expect(onApproveMany).toHaveBeenCalledWith(["s-1"], "Priya N");
+  });
+
+  it("will not let a flagged section be selected for bulk approval", () => {
+    // The bulk path must not become a way to sign off a contradicted claim.
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onApproveMany={() => {}}
+                          busy={false} />);
+    expect(screen.getByTestId("select-technical_approach")).toBeDisabled();
+    expect(screen.getByTestId("select-company_profile")).toBeEnabled();
+    expect(screen.getByTestId("blocked-note")).toHaveTextContent(
+      "1 section(s) not selectable",
+    );
+  });
+
+  it("needs a name before the bulk button works", () => {
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onApproveMany={() => {}}
+                          busy={false} />);
+    fireEvent.click(screen.getByTestId("select-all-sections"));
+    expect(screen.getByTestId("approve-selected")).toBeDisabled();
   });
 
   it("offers a way to resolve a flagged claim", () => {
@@ -186,10 +222,7 @@ describe("ProposalPanel", () => {
     render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
                           onApprove={() => {}} busy={false} />);
     expect(screen.getByPlaceholderText(/Your name/)).toHaveValue("Priya N");
-    // Still one approval per section: remembering a name is convenience,
-    // not a bulk action (SPEC §3.2 US-11).
     expect(screen.getAllByTestId("approve-button")).toHaveLength(2);
-    expect(screen.queryByText(/approve all/i)).toBeNull();
   });
 
   it("never shows the internal source tags in the prose", () => {

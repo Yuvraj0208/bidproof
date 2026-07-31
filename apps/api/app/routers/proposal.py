@@ -173,6 +173,32 @@ async def approve_section(
     return result
 
 
+class ApproveManyIn(BaseModel):
+    section_ids: list[uuid.UUID]
+    name: str
+
+
+# Not under /sections/ — "approve" there is matched as a {section_id} by the
+# single-section routes, which answers a POST with 405.
+@router.post("/tenders/{tender_id}/proposal/approve-sections")
+async def approve_sections(
+    tender_id: uuid.UUID,
+    body: ApproveManyIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> dict:
+    """Checkpoint 5: approve the selected sections under one name.
+
+    Sections with an unresolved flag are skipped and named in the response —
+    the operator resolves those in the same screen and approves again.
+    """
+    result, error = await proposal_service.approve_sections(
+        org_id, tender_id, body.section_ids, body.name.strip()
+    )
+    if error is not None:
+        raise HTTPException(409, error)
+    return result
+
+
 class ResolveClaimIn(BaseModel):
     # "drop" removes the sentence; "accept" keeps it on a named person's word.
     action: str
