@@ -187,3 +187,56 @@ export function FieldLabel({ children }: { children: ReactNode }) {
     </span>
   );
 }
+
+/** ReadingIndicator — a document being read, right now.
+ *
+ * The SkeletonLoader above is for content whose *shape* we know is coming. This
+ * is the other case: a background job of unknown length, where the honest thing
+ * to show is motion plus the page count so far. A tender that is mid-parse used
+ * to be invisible in the product entirely, which read as "my upload vanished".
+ */
+export function ReadingIndicator({
+  label = "Reading the document",
+  detail,
+}: {
+  label?: string;
+  detail?: string;
+}) {
+  return (
+    <div
+      data-testid="reading-indicator"
+      className="flex items-center gap-2.5"
+      role="status"
+      aria-live="polite"
+    >
+      <motion.span
+        aria-hidden
+        className="block h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-indigo/25 border-t-indigo"
+        animate={{ rotate: 360 }}
+        transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+      />
+      <span className="min-w-0">
+        <span className="text-xs font-medium text-indigo">{label}</span>
+        {/* Three pages turning: motion that means "working through it". */}
+        <span aria-hidden className="ml-1.5 inline-flex gap-0.5 align-middle">
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="block h-1 w-1 rounded-full bg-indigo/50"
+              animate={{ opacity: [0.25, 1, 0.25] }}
+              transition={{
+                duration: 1.2,
+                repeat: Infinity,
+                delay: i * 0.18,
+                ease: "easeInOut",
+              }}
+            />
+          ))}
+        </span>
+        {detail && (
+          <span className="ml-2 text-[11px] text-ink-muted">{detail}</span>
+        )}
+      </span>
+    </div>
+  );
+}

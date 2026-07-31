@@ -32,6 +32,7 @@ import {
   EmptyState,
   PageHeader,
   SkeletonLoader,
+  ReadingIndicator,
 } from "./ui/primitives";
 
 const TABS = [
@@ -80,6 +81,18 @@ export default function App({
       })
       .finally(() => setLoading(false));
   }, [org, tab, refresh]);
+
+  // While any tender is mid-parse, re-check every few seconds. Parsing runs in
+  // a background task, so without this the card sits at "Reading…" until the
+  // user reloads the page and hopes.
+  const reading = cards.some(
+    (c) => c.parse_status === "pending" || c.parse_status === "running",
+  );
+  useEffect(() => {
+    if (!reading) return;
+    const timer = setInterval(() => setRefresh((n) => n + 1), 4000);
+    return () => clearInterval(timer);
+  }, [reading]);
 
   const open = (card: { tender_id: string; title: string }) => {
     onOpenTender?.({ id: card.tender_id, title: card.title });
@@ -487,6 +500,36 @@ export default function App({
                   {card.checkpoint0 && <Pill tone="warning">checkpoint-0: {card.checkpoint0}</Pill>}
                 </div>
 
+                {/* Still being read: parsing runs in the background, and a
+                    tender with no radar list used to be invisible in every tab,
+                    which read as "my upload vanished". */}
+                {(card.parse_status === "pending" ||
+                  card.parse_status === "running") && (
+                  <div className="mt-2">
+                    <ReadingIndicator
+                      label="Reading the document"
+                      detail="scanned pages go through OCR, which can take a few minutes"
+                    />
+                  </div>
+                )}
+
+                {card.parse_status === "failed" && (
+                  <p className="mt-2 text-xs text-danger">
+                    This document could not be read. Open it to see why, or
+                    upload the PDF again.
+                  </p>
+                )}
+
+                {/* Read, but triage has not sorted it into a list yet. */}
+                {card.radar_list === null &&
+                  card.parse_status !== "pending" &&
+                  card.parse_status !== "running" &&
+                  card.parse_status !== "failed" && (
+                    <p className="mt-2 text-xs text-ink-muted">
+                      Read, and waiting to be scored against your lanes.
+                    </p>
+                  )}
+
                 {!card.has_document && (
                   <p className="mt-2 text-xs text-ink-muted">
                     {card.can_fetch_document ? (
@@ -529,9 +572,20 @@ export default function App({
                     <Button
                       size="sm"
                       variant="primary"
-                      disabled={busy !== null}
+                      // Pressing this mid-parse would extract from a document
+                      // that has no elements yet.
+                      disabled={
+                        busy !== null ||
+                        card.parse_status === "pending" ||
+                        card.parse_status === "running"
+                      }
                       onClick={() => onProcess(card)}
-                      title="Extract the rules and check them — this is the step that calls a model"
+                      title={
+                        card.parse_status === "running" ||
+                        card.parse_status === "pending"
+                          ? "Still reading the document — this becomes available once it is read"
+                          : "Extract the rules and check them — this is the step that calls a model"
+                      }
                     >
                       ⚡ Process with AI
                     </Button>

@@ -6,6 +6,7 @@ functions that cannot make a call. Only unresolved prose rules reach the
 retriever + cited judge, and a judge without both citations is voided to
 NEEDS_HUMAN."""
 
+import asyncio
 import logging
 import uuid
 from datetime import date, datetime, timezone
@@ -95,23 +96,52 @@ async def _judge(gateway: LLMGateway | None, rule: CheckRule,
         cited_product_id=call.product_id)
 
 
+def _max_concurrency() -> int:
+    """Ceiling on simultaneous judge calls. Its own function so a test can pin
+    it without reaching into settings."""
+    return max(1, get_settings().llm_max_concurrency)
+
+
 async def _verdicts_for(rules, facts, products, gateway, today
                         ) -> tuple[list[tuple[CheckRule, VerdictResult]], int]:
     """The matcher core: arithmetic first, cited judge second. Shared by the
-    full check and the amendment's affected-only re-check."""
+    full check and the amendment's affected-only re-check.
+
+    Arithmetic is settled synchronously for every rule before any model is
+    asked, so the ordering golden rule 3 depends on is structural: a rule that
+    code can decide never reaches the judge, whatever the concurrency.
+
+    The prose remainder is independent rule by rule, so it is judged
+    concurrently under `_max_concurrency()`. Results are reassembled in the
+    original rule order — several callers pair rules with verdicts by position.
+    """
     retriever = KeywordRetriever()
-    results: list[tuple[CheckRule, VerdictResult]] = []
-    model_calls = 0
-    for rule in rules:
+    settled: dict[int, VerdictResult] = {}
+    pending: list[tuple[int, CheckRule, list[ProductRef]]] = []
+
+    for index, rule in enumerate(rules):
         arithmetic_result = check_rule(rule, facts, products, today)
         if arithmetic_result is not None:
-            results.append((rule, arithmetic_result))
+            settled[index] = arithmetic_result
             continue
-        candidates = retriever.retrieve(rule.requirement_text, products)
-        judged = await _judge(gateway, rule, candidates)
-        model_calls += 1 if gateway is not None and candidates else 0
-        results.append((rule, judged))
-    return results, model_calls
+        pending.append((index, rule, retriever.retrieve(rule.requirement_text, products)))
+
+    semaphore = asyncio.Semaphore(_max_concurrency())
+
+    async def judge_one(index: int, rule: CheckRule, candidates: list[ProductRef]):
+        async with semaphore:
+            return index, await _judge(gateway, rule, candidates)
+
+    if pending:
+        for index, judged in await asyncio.gather(
+            *(judge_one(i, r, c) for i, r, c in pending)
+        ):
+            settled[index] = judged
+
+    model_calls = sum(
+        1 for _, _, candidates in pending if gateway is not None and candidates
+    )
+    return [(rule, settled[i]) for i, rule in enumerate(rules)], model_calls
 
 
 async def _load_capability(session):
@@ -200,9 +230,12 @@ async def recheck_rules(org_id: uuid.UUID, tender_id: uuid.UUID,
     return {"rechecked": len(rules), "changed": changed}
 
 
-async def _rescore_risks(org_id: uuid.UUID, tender_id: uuid.UUID) -> None:
+async def _rescore_risks(org_id: uuid.UUID, tender_id: uuid.UUID) -> list:
     """Risks are tender-wide and deterministic (no model). Re-derive them
-    from the current rule set after an amendment."""
+    from the current rule set after an amendment.
+
+    Returns the flags it wrote so a caller can report them without re-reading.
+    """
     async with org_scoped_session(org_id) as session:
         tender = await session.get(Tender, tender_id)
         rules = (
@@ -233,16 +266,23 @@ async def _rescore_risks(org_id: uuid.UUID, tender_id: uuid.UUID) -> None:
                 rupee_impact=flag.rupee_impact,
                 el_id=uuid.UUID(flag.el_id) if flag.el_id else None,
             ))
+    return risk_flags
 
 
-async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
-                     gateway: LLMGateway | None = None) -> dict | None:
+async def run_matcher(org_id: uuid.UUID, tender_id: uuid.UUID,
+                      gateway: LLMGateway | None = None) -> dict | None:
+    """The Matcher alone: verdicts for every rule, persisted.
+
+    Split out of `run_checks` so the Conductor can run it beside the
+    RiskScorer. The two are genuinely independent — `_build_risk_inputs` reads
+    only the rule half of its input pairs, never a verdict — so nothing here
+    may start depending on risk output without breaking that.
+    """
     import time
 
-    checks_started = time.monotonic()
+    started = time.monotonic()
     async with org_scoped_session(org_id) as session:
-        tender = await session.get(Tender, tender_id)
-        if tender is None:
+        if await session.get(Tender, tender_id) is None:
             return None
         rules = [
             CheckRule(
@@ -255,56 +295,69 @@ async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
             ).scalars()
         ]
         facts, products = await _load_capability(session)
-        closing_at = tender.closing_at
 
-    today = date.today()
-    results, model_calls = await _verdicts_for(rules, facts, products, gateway, today)
-
-    by_key = {r.key: (r, v) for r, v in results}
-    risk_inputs = _build_risk_inputs(by_key, closing_at, products)
-    settings = get_settings()
-    risk_flags = score_risks(
-        risk_inputs,
-        RiskThresholds(
-            pbg_max_percent=settings.risk_pbg_max_percent,
-            emd_max_percent_of_value=settings.risk_emd_max_percent_of_value,
-        ),
+    results, model_calls = await _verdicts_for(
+        rules, facts, products, gateway, date.today()
     )
 
     async with org_scoped_session(org_id) as session:
         await session.execute(delete(VerdictRow).where(VerdictRow.tender_id == tender_id))
-        await session.execute(delete(RiskRow).where(RiskRow.tender_id == tender_id))
         for rule, result in results:
             _persist_verdict(session, org_id, tender_id, rule, result)
-        for flag in risk_flags:
-            session.add(RiskRow(
-                org_id=org_id, tender_id=tender_id, code=flag.code,
-                severity=flag.severity, message=flag.message,
-                rupee_impact=flag.rupee_impact,
-                el_id=uuid.UUID(flag.el_id) if flag.el_id else None,
-            ))
 
     counts: dict[str, int] = {}
     for _, result in results:
         counts[result.verdict.value] = counts.get(result.verdict.value, 0) + 1
 
-    duration_ms = int((time.monotonic() - checks_started) * 1000)
     await record_agent_run(
-        org_id, tender_id, "matcher", duration_ms=duration_ms,
+        org_id, tender_id, "matcher",
+        duration_ms=int((time.monotonic() - started) * 1000),
         model_role="mid" if model_calls else None,
         prompt_version="judge_v1" if model_calls else None,
         meta={"rules_checked": len(results), "verdicts": counts,
               "model_calls": model_calls},
     )
-    await record_agent_run(
-        org_id, tender_id, "riskscorer", duration_ms=0,
-        meta={"flags": [f.code for f in risk_flags]},
-    )
     return {
         "rules_checked": len(results),
         "verdicts": counts,
-        "risks": len(risk_flags),
         "model_calls": model_calls,
+    }
+
+
+async def score_risks_for_tender(org_id: uuid.UUID, tender_id: uuid.UUID) -> dict:
+    """The RiskScorer alone: deterministic, and it never sees a gateway.
+
+    There is no `gateway` parameter by design — SPEC §4 lists the RiskScorer as
+    deterministic, and a function with nothing to call cannot drift into
+    calling something.
+    """
+    import time
+
+    started = time.monotonic()
+    flags = await _rescore_risks(org_id, tender_id)
+    await record_agent_run(
+        org_id, tender_id, "riskscorer",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        meta={"flags": [f.code for f in flags]},
+    )
+    return {"risks": len(flags)}
+
+
+async def run_checks(org_id: uuid.UUID, tender_id: uuid.UUID,
+                     gateway: LLMGateway | None = None) -> dict | None:
+    """Both halves in sequence — the signature every existing caller uses.
+
+    The Conductor runs the same two functions concurrently instead. Keeping
+    this wrapper means the graph is an alternative orchestration of the same
+    code, not a second implementation of it.
+    """
+    matched = await run_matcher(org_id, tender_id, gateway=gateway)
+    if matched is None:
+        return None
+    scored = await score_risks_for_tender(org_id, tender_id)
+    return {
+        **matched,
+        "risks": scored["risks"],
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 

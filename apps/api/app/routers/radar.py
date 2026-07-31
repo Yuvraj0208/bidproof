@@ -12,12 +12,15 @@ from sqlalchemy import select
 from app.services import portal_links
 from app.core.db import org_scoped_session
 from app.core.tenancy import require_org_id
-from app.models import Document, Tender
+from app.models import Document, ParseRun, Tender
 from app.services import triage as triage_service
 
 router = APIRouter()
 
-VALID_LISTS = {"in_our_lane", "opportunity_radar", "needs_human"}
+# `not_relevant` is a real list a caller may ask for, but it is never part of
+# the default radar view — that is the whole point of scoring it.
+VALID_LISTS = {"in_our_lane", "opportunity_radar", "needs_human", "not_relevant"}
+HIDDEN_BY_DEFAULT = {"not_relevant"}
 
 
 class RadarCard(BaseModel):
@@ -26,7 +29,8 @@ class RadarCard(BaseModel):
     source: str
     external_id: str | None
     closing_at: datetime | None
-    radar_list: str
+    # None while a tender is still being read: triage runs after the parse.
+    radar_list: str | None = None
     fit_score: float | None
     confidence: float | None
     band: str | None
@@ -48,6 +52,10 @@ class RadarCard(BaseModel):
     # Whether the portal will hand us the PDF directly. GeM will; CPPP will not.
     # Decided here so the UI never has to know one portal from another.
     can_fetch_document: bool = False
+    # How the reading of the document went. A tender that is still being parsed,
+    # or whose parse failed, has no radar list yet — it must still be visible,
+    # or an upload simply disappears.
+    parse_status: str | None = None
 
 
 class ResolveIn(BaseModel):
@@ -64,6 +72,7 @@ async def radar(
         raise HTTPException(400, f"list must be one of {sorted(VALID_LISTS)}")
 
     async with org_scoped_session(org_id) as session:
+        # Triaged tenders, filtered to the requested list.
         query = (
             select(Tender)
             .where(Tender.radar_list.is_not(None))
@@ -71,16 +80,46 @@ async def radar(
         )
         if list_name:
             query = query.where(Tender.radar_list == list_name)
+        else:
+            query = query.where(Tender.radar_list.notin_(HIDDEN_BY_DEFAULT))
         tenders = list((await session.execute(query)).scalars())
-        with_docs = set(
+
+        # Plus every tender that has NOT been triaged yet, whatever list was
+        # asked for. Triage runs after parsing, in the background, so a fresh
+        # upload has no list for as long as the read takes — and a failed parse
+        # never gets one at all. Filtering those out made an upload vanish from
+        # the product with no trace, which is how a 9-page scan "disappeared".
+        untriaged = list(
             (
                 await session.execute(
-                    select(Document.tender_id).where(
-                        Document.tender_id.in_([t.id for t in tenders] or [None])
-                    )
+                    select(Tender)
+                    .where(Tender.radar_list.is_(None))
+                    .order_by(Tender.created_at.desc())
                 )
             ).scalars()
         )
+        tenders = untriaged + tenders
+        ids = [t.id for t in tenders] or [None]
+        with_docs = set(
+            (
+                await session.execute(
+                    select(Document.tender_id).where(Document.tender_id.in_(ids))
+                )
+            ).scalars()
+        )
+
+        # The latest parse status per tender, so an untriaged card can say
+        # whether it is still being read or could not be read at all.
+        parse_status: dict = {}
+        for tender_id_, status in (
+            await session.execute(
+                select(Document.tender_id, ParseRun.status)
+                .join(ParseRun, ParseRun.document_id == Document.id)
+                .where(Document.tender_id.in_(ids))
+                .order_by(ParseRun.created_at.desc())
+            )
+        ).all():
+            parse_status.setdefault(tender_id_, status)
 
         return [
             RadarCard(
@@ -107,6 +146,7 @@ async def radar(
                     t.id not in with_docs
                     and portal_links.document_url(t.source, t.portal_url) is not None
                 ),
+                parse_status=parse_status.get(t.id),
             )
             for t in tenders
         ]

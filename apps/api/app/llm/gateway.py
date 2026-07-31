@@ -65,7 +65,9 @@ class LLMGateway:
         settings = get_settings()
         self._base_url = (base_url or settings.litellm_base_url).rstrip("/")
         self._api_key = api_key or settings.litellm_master_key
-        self._client = client or httpx.AsyncClient(timeout=120)
+        self._client = client or httpx.AsyncClient(
+            timeout=settings.llm_timeout_seconds
+        )
 
     async def complete(self, role: str, messages: list[dict], **params) -> dict:
         if role not in ROLES:

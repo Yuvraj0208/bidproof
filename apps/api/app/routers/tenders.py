@@ -1,6 +1,7 @@
 """Tenders: manual upload (US-03), parse status, and the grounded elements
 feed that click-to-proof (US-04) will draw its highlight boxes from."""
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -12,7 +13,7 @@ from app.services import portal_links
 from app.core.config import get_settings
 from app.core.db import org_scoped_session
 from app.core.roles import Role, require_role
-from app.core.tenancy import require_org_id
+from app.core.tenancy import require_known_org, require_org_id
 from app.models import AuditLog, Document, Element, Page, ParseRun, Tender
 from app.observability import get_parse_logger
 from app.parsing import get_ladder
@@ -21,6 +22,8 @@ from app.services import extraction as extraction_service
 from app.services import ingest
 from app.services import triage as triage_service
 from app.storage import ObjectStorage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -119,10 +122,17 @@ async def upload_tender(
     settings = get_settings()
     data = await file.read()
 
+    # The file check first: it is pure, needs no database, and "this is not a
+    # PDF" is a more specific answer than anything about tenancy.
     try:
         ingest.validate_pdf_upload(data, settings.max_upload_mb * 1024 * 1024)
     except ingest.UploadValidationError as error:
         raise HTTPException(error.status_code, error.detail)
+
+    # Then the tenant, before anything is written. A stale org id used to reach
+    # the insert and die on a foreign key; the resulting 500 carries no CORS
+    # header, so the browser showed only "TypeError: Failed to fetch".
+    await require_known_org(org_id)
 
     try:
         tender_id, document_id, parse_run_id, object_key = (
@@ -292,6 +302,11 @@ class ProcessOut(BaseModel):
     rules: int
     verdicts: dict
     model_calls: int
+    # Which orchestration ran: "conductor" (the graph) or "sequential".
+    # Surfaced so a demo can never claim the graph ran when it did not.
+    orchestrator: str = "sequential"
+    # The checkpoint the run stopped at, when the graph ran it.
+    paused_at: int | None = None
 
 
 @router.post("/tenders/{tender_id}/process", response_model=ProcessOut)
@@ -319,14 +334,15 @@ async def process_tender(
             "this tender has no parsed document yet — portal-discovered tenders "
             "often carry metadata only; upload the PDF to read it",
         )
-    checked = await checking_service.run_checks(org_id, tender_id) or {}
+    checked = await _run_checking(org_id, tender_id, gateway)
 
     async with org_scoped_session(org_id) as session:
         session.add(AuditLog(
             org_id=org_id, tender_id=tender_id, actor=role.value,
             action="tender_processed_with_ai",
             details={"rules": summary.get("rules", 0),
-                     "model_calls": checked.get("model_calls", 0)},
+                     "model_calls": checked.get("model_calls", 0),
+                     "orchestrator": checked.get("orchestrator", "sequential")},
         ))
 
     return ProcessOut(
@@ -334,7 +350,52 @@ async def process_tender(
         rules=summary.get("rules", 0),
         verdicts=checked.get("verdicts", {}),
         model_calls=checked.get("model_calls", 0),
+        orchestrator=checked.get("orchestrator", "sequential"),
+        paused_at=checked.get("paused_at"),
     )
+
+
+async def _run_checking(org_id: uuid.UUID, tender_id: uuid.UUID, gateway) -> dict:
+    """Check the tender, through the Conductor when it is available.
+
+    Both routes execute the same service functions — the graph runs the Matcher
+    and the RiskScorer concurrently and stops at checkpoint 4, the sequential
+    path runs them in order. So this is an orchestration choice, and falling
+    back to the sequential path is a real fallback rather than a degraded
+    result.
+
+    The fallback is deliberate and not silent: if the graph raises, checking
+    still happens and the audit log records which route ran.
+    """
+    from app.conductor import conductor_available
+
+    if get_settings().conductor_enabled and conductor_available():
+        from app.conductor import run_tender
+
+        try:
+            # The request's gateway, so a stubbed one reaches the graph exactly
+            # as it reaches the sequential path.
+            run = await run_tender(org_id, tender_id, gateway=gateway)
+            return {
+                "verdicts": run["verdict_counts"],
+                "model_calls": run["model_calls"],
+                "orchestrator": "conductor",
+                "paused_at": run["paused_at"],
+            }
+        except Exception:
+            logger.exception(
+                "the conductor failed for tender %s; falling back to the "
+                "sequential path so checking still completes",
+                tender_id,
+            )
+
+    # The same gateway serves both halves: the role is chosen per call inside
+    # each service. Omitting it here does not fail — `_judge` short-circuits to
+    # "no judge available" and every prose rule silently becomes needs_human.
+    checked = await checking_service.run_checks(
+        org_id, tender_id, gateway=gateway
+    ) or {}
+    return {**checked, "orchestrator": "sequential"}
 
 
 @router.delete("/tenders/{tender_id}", status_code=200)

@@ -52,6 +52,35 @@ async def test_out_of_scope_question_is_refused(owner_conn):
     assert "only discuss the tenders" in answer["answer"]
 
 
+async def test_a_broad_question_is_answered_not_refused(owner_conn):
+    """"What is this tender?" is everyone's first question.
+
+    It reduces to nothing searchable, because "what", "this" and "tender" are
+    all stopwords — so it matched no element and was hard-refused with "I can
+    only discuss the tenders in this workspace". Refusal has to mean "you asked
+    about something else", never "you asked broadly".
+    """
+    org_id = await create_org(owner_conn)
+    app = make_app(FakeGateway([]))
+    async with client_for(app, org_id) as client:
+        tender_id = await parsed_tender(client)
+        answer = (await client.post(
+            f"/tenders/{tender_id}/chat",
+            json={"question": "What is this tender"},
+        )).json()
+        # The scope boundary still holds for a question that names other things.
+        off = (await client.post(
+            f"/tenders/{tender_id}/chat",
+            json={"question": "who won the cricket match yesterday"},
+        )).json()
+
+    assert off["refused"] is True
+    assert off["reason"] == "out_of_scope"
+
+    assert answer["refused"] is False, answer["answer"]
+    assert answer["citations"], "a broad answer still has to cite the tender"
+
+
 async def test_jailbreak_is_refused_and_logged(owner_conn):
     org_id = await create_org(owner_conn)
     app = make_app(FakeGateway([]))

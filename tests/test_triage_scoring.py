@@ -132,3 +132,75 @@ def test_extract_value_inr_is_regex_only():
     assert extract_value_inr("value approx ₹75 lakh") == 75e5
     assert extract_value_inr("no numbers here") is None
     assert extract_value_inr("") is None
+
+
+# --- The two lists must actually be usable ----------------------------------
+
+
+def _profile(**over):
+    """A profile whose weight keys match the scorer's component names."""
+    base = dict(
+        categories=(Category("storage racks", ("rack", "racking", "storage")),),
+        weights={
+            "category": 0.35, "eligibility": 0.25, "value": 0.15,
+            "location": 0.10, "win_history": 0.15,
+        },
+        value_band_inr=(100_000, 50_000_000_000),
+        win_categories=("storage racks",),
+    )
+    base.update(over)
+    return OrgProfile(**base)
+
+
+def test_unrecognised_weight_keys_cannot_wreck_confidence():
+    """The live bug: the org profile used category_fit / value_band / past_wins,
+    which the scorer never reads. They were merged in anyway and counted in
+    `total_weight` — the denominator of coverage — so coverage halved to 0.45,
+    fell under the 0.50 floor, and EVERY tender was pinned in the needs-human
+    queue. Both radar lists were permanently empty.
+
+    The service layer now drops unknown keys; this pins the arithmetic itself.
+    """
+    from app.services.triage import _known_weights
+
+    assert _known_weights(
+        {"category_fit": 0.4, "value_band": 0.3, "past_wins": 0.3}
+    ) == {}
+    assert _known_weights({"category": 0.5, "value": 0.5}) == {
+        "category": 0.5, "value": 0.5
+    }
+
+
+def test_a_poor_fit_is_not_presented_as_an_opportunity():
+    """`triage_radar_threshold` was consulted only for the borderline check, so
+    the final branch swept everything into the opportunity radar. A PNB request
+    for "suitable ready premises" scored 0.10 and was shown as an opportunity
+    Godrej could win."""
+    from bidproof_triage import NOT_RELEVANT, OPPORTUNITY_RADAR
+
+    signals = TenderSignals(
+        title="Punjab National Bank requires suitable ready premises on lease",
+        text="",
+        value_inr=None,
+        closing_at=datetime(2026, 12, 1, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 30, tzinfo=timezone.utc),
+    )
+    result = triage(signals, _profile(), Thresholds())
+    assert result.radar_list != OPPORTUNITY_RADAR, result.reasons
+    assert result.radar_list in {NOT_RELEVANT, "needs_human"}
+
+
+def test_a_real_match_still_reaches_in_our_lane():
+    """The fix must not empty the lists a different way."""
+    from bidproof_triage import IN_OUR_LANE
+
+    signals = TenderSignals(
+        title="Supply and installation of heavy duty pallet racking storage system",
+        text="Estimated value Rs 10,00,00,000. Racking to EN 15512.",
+        value_inr=100_000_000,
+        closing_at=datetime(2026, 12, 1, tzinfo=timezone.utc),
+        now=datetime(2026, 7, 30, tzinfo=timezone.utc),
+    )
+    result = triage(signals, _profile(), Thresholds())
+    assert result.radar_list == IN_OUR_LANE, (result.radar_list, result.reasons)
+    assert result.fit_score >= 0.55

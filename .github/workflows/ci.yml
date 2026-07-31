@@ -82,13 +82,24 @@ jobs:
       # Reviewed exceptions (all permissive; listed because their licence
       # strings can't sit in the semicolon-separated allow list):
       #   certifi — MPL-2.0, CA certificate bundle only (approved 2026-07-16)
+      #   orjson — "MPL-2.0 AND (Apache-2.0 OR MIT)"; the package is
+      #            Apache-2.0/MIT and vendors one MPL-2.0 float parser. MPL is
+      #            file-level copyleft, so the obligation stays with those
+      #            files and does not reach our source. Arrives via
+      #            langgraph -> langsmith. (approved 2026-07-31)
+      #   sniffio — "Apache Software License; MIT License"; both options are
+      #             permissive, but the string itself contains the separator
+      #             the allow list is split on, so it cannot go there
       #   pycryptodome — "BSD License; Public Domain"
       #   bidproof-* — this repo's own packages
+      # "Apache-2.0 OR MIT" (ormsgpack) IS in the allow list: permissive, and
+      # the string survives the semicolon split intact.
       # Optional extras reviewed by hand: docling MIT, torch BSD-3,
-      # paddlepaddle/paddleocr Apache-2.0, playwright Apache-2.0.
+      # paddlepaddle/paddleocr Apache-2.0, playwright Apache-2.0,
+      # rapidocr Apache-2.0, onnxruntime MIT.
       - name: Licence gate
         run: >-
           uvx pip-licenses
           --python "$(pwd)/apps/api/.venv/bin/python"
-          --allow-only "MIT;MIT License;MIT-0;BSD License;BSD-2-Clause;BSD-3-Clause;3-Clause BSD License;Apache-2.0;Apache Software License;Apache-2.0 OR BSD-2-Clause;BSD-3-Clause, Apache-2.0, dependency licenses;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
-          --ignore-packages certifi pycryptodome bidproof-api bidproof-parser bidproof-adapters bidproof-scout bidproof-triage bidproof-extractor bidproof-matcher bidproof-riskscorer bidproof-decider bidproof-questionwriter bidproof-librarian bidproof-proposalwriter bidproof-factchecker bidproof-formfiller bidproof-guard
+          --allow-only "MIT;MIT License;MIT-0;BSD License;BSD-2-Clause;BSD-3-Clause;3-Clause BSD License;Apache-2.0;Apache Software License;Apache-2.0 OR BSD-2-Clause;Apache-2.0 OR MIT;BSD-3-Clause, Apache-2.0, dependency licenses;ISC;ISC License (ISCL);PSF-2.0;Python Software Foundation License;MIT AND PSF-2.0"
+          --ignore-packages certifi orjson sniffio pycryptodome bidproof-api bidproof-parser bidproof-adapters bidproof-scout bidproof-triage bidproof-extractor bidproof-matcher bidproof-riskscorer bidproof-decider bidproof-questionwriter bidproof-librarian bidproof-proposalwriter bidproof-factchecker bidproof-formfiller bidproof-guard

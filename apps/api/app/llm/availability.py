@@ -15,6 +15,7 @@ result of this probe is logged loudly at startup and surfaced in the UI
 
 import asyncio
 import logging
+import time
 
 from app.llm.gateway import ROLES, LLMGateway, extract_text
 
@@ -24,6 +25,14 @@ _PROBE = [{"role": "user", "content": "Reply with the single word: OK"}]
 
 # Cached so the UI can poll cheaply; refreshed at startup and on demand.
 _status: dict | None = None
+_probed_at: float = 0.0
+
+# How long a probe result may be trusted. Without an expiry the very first
+# probe won: an API that started while the LiteLLM container was still
+# booting cached 'deterministic' and reported it forever, so the UI badge
+# claimed templates long after real models were reachable. A badge that
+# lies about whether answers came from a model is worse than no badge.
+_CACHE_TTL_S = 60.0
 
 
 async def probe_roles(timeout_s: float = 45.0) -> dict:
@@ -102,12 +111,22 @@ async def _probe_one(gateway: LLMGateway, role: str, timeout_s: float) -> dict:
 
 
 async def refresh() -> dict:
-    global _status
+    global _status, _probed_at
     _status = await probe_roles()
+    _probed_at = time.monotonic()
     return _status
 
 
 def cached() -> dict | None:
+    """The last probe, or None once it is stale enough to be re-checked.
+
+    Returning None makes the caller re-probe, which is how the badge recovers
+    on its own after the gateway comes back.
+    """
+    if _status is None:
+        return None
+    if time.monotonic() - _probed_at > _CACHE_TTL_S:
+        return None
     return _status
 
 

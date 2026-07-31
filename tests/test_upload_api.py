@@ -87,6 +87,39 @@ async def test_upload_requires_org_context():
 
 
 @pytest.mark.integration
+async def test_upload_with_a_vanished_org_says_so_instead_of_500ing(owner_conn):
+    """A browser can hold a signed-in org id after that row has gone — most
+    easily by running the integration suite, whose fixtures TRUNCATE
+    `organizations`.
+
+    That used to reach the insert and die on a foreign key. The resulting 500
+    carries no CORS header (Starlette's ServerErrorMiddleware sits outside the
+    CORS middleware), so the browser reported only "TypeError: Failed to fetch"
+    and every diagnosis went looking for a network fault.
+    """
+    import uuid as _uuid
+
+    from test_checking_api import client_for, make_app
+    from test_rules_api import FakeGateway
+
+    org_id = await create_org(owner_conn)
+    app = make_app(FakeGateway([]))
+
+    async with client_for(app, org_id) as client:
+        response = await client.post(
+            "/tenders/upload",
+            files={"file": ("t.pdf", DIGITAL, "application/pdf")},
+            headers={"X-Org-Id": str(_uuid.uuid4())},  # valid UUID, no such org
+        )
+
+    assert response.status_code == 404, response.text
+    detail = response.json()["detail"]
+    assert "no longer exists" in detail
+    # It must tell the operator what to DO, not merely that something broke.
+    assert "sign in again" in detail
+
+
+@pytest.mark.integration
 async def test_upload_born_digital_end_to_end(owner_conn):
     org_id = await create_org(owner_conn)
     logger = CaptureLogger()

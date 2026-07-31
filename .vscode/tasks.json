@@ -127,6 +127,31 @@
         "reveal": "always",
         "panel": "dedicated",
         "clear": true
+      },
+      "detail": "Unit tests only. Safe: does NOT touch your database."
+    },
+    {
+      "label": "BidProof: Tests (full) — WIPES YOUR DEMO DATA",
+      "detail": "Integration fixtures TRUNCATE organizations and tenders. Run 'Reseed demo data' afterwards.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python -m pytest -q",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "BidProof: Reseed demo data (Godrej)",
+      "detail": "Restores the org, company facts and product catalogue after a full test run.",
+      "type": "shell",
+      "command": "python -m uv run --project apps/api python infra/seed/seed_godrej_public.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {

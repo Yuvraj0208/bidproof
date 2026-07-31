@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   amendTender,
   approveSection,
+  resolveClaim,
   askChat,
   attachChecklistFile,
   computeDecision,
@@ -12,6 +13,9 @@ import {
   fetchAgentRuns,
   fetchAmendments,
   fetchChatHistory,
+  fetchConductorGraph,
+  fetchConductorRun,
+  type ConductorGraph,
   fetchChecklist,
   generateChecklist,
   tickChecklistItem,
@@ -110,6 +114,8 @@ export function Workspace({
   const [risks, setRisks] = useState<BriefRisk[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRunData[]>([]);
   const [consoleTotals, setConsoleTotals] = useState<ConsoleTotals | null>(null);
+  const [conductorGraph, setConductorGraph] = useState<ConductorGraph | null>(null);
+  const [pausedAt, setPausedAt] = useState<number | null>(null);
   const [replaying, setReplaying] = useState(false);
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [amending, setAmending] = useState(false);
@@ -148,6 +154,14 @@ export function Workspace({
         setConsoleTotals(console_.totals as ConsoleTotals);
       })
       .catch(() => setAgentRuns([]));
+    // The pipeline shape. Failing quietly is right: the console's job is the
+    // cost ledger, and it should still render if the graph is unavailable.
+    fetchConductorGraph()
+      .then(setConductorGraph)
+      .catch(() => setConductorGraph(null));
+    fetchConductorRun(tenderId)
+      .then((run) => setPausedAt(run.paused_at))
+      .catch(() => setPausedAt(null));
     fetchAmendments(tenderId).then(setAmendments).catch(() => setAmendments([]));
     fetchQuestions(tenderId).then(setLetters).catch(() => setLetters([]));
     fetchProposal(tenderId).then(setProposal).catch(() => setProposal(null));
@@ -223,6 +237,33 @@ export function Workspace({
   const handleApproveSection = async (sectionId: string, name: string) => {
     try {
       await approveSection(tenderId, sectionId, name);
+      push("Section approved.", "success");
+    } catch (e) {
+      // The refusal used to be swallowed here, so a section that could not be
+      // approved looked like a button that did nothing.
+      push(`Could not approve: ${String(e)}`, "danger");
+    } finally {
+      load();
+    }
+  };
+
+  const handleResolveClaim = async (
+    sectionId: string,
+    claimIndex: number,
+    action: "drop" | "accept",
+    by: string,
+    reason: string,
+  ) => {
+    try {
+      await resolveClaim(tenderId, sectionId, claimIndex, action, by, reason);
+      push(
+        action === "drop"
+          ? "Sentence removed from the section."
+          : "Claim accepted — recorded with your name and reason.",
+        "success",
+      );
+    } catch (e) {
+      push(`Could not resolve the claim: ${String(e)}`, "danger");
     } finally {
       load();
     }
@@ -578,6 +619,7 @@ export function Workspace({
             proposal={proposal}
             onGenerate={handleDraftProposal}
             onApprove={handleApproveSection}
+            onResolveClaim={handleResolveClaim}
             busy={writing}
           />
         </div>
@@ -604,6 +646,8 @@ export function Workspace({
             totals={consoleTotals}
             onReplay={handleReplay}
             replaying={replaying}
+            graph={conductorGraph}
+            pausedAt={pausedAt}
           />
         </div>
       ) : tab === "decision" ? (

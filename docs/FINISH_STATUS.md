@@ -818,3 +818,476 @@ Two bugs found writing it, both fixed:
 
 Both tools are wired as VS Code tasks (**Company data** / **Company gaps**), which
 prompt for the company name.
+
+---
+
+## "Upload failed: TypeError: Failed to fetch" (2026-07-28)
+
+Reported with a screenshot. The message points at the network, and the network was
+fine — every port was listening, CORS preflight returned 200, and a 7.6 MB PDF
+uploaded in 1.1 s from outside the browser.
+
+**The real cause was a stale organisation id.** A browser keeps the signed-in org
+in `localStorage`, and the integration suite TRUNCATEs `organizations` — so after a
+full test run the app is signed in as a company that no longer exists. Writing
+against it reached the insert and died on a foreign key.
+
+The part that made it unreadable: **an unhandled 500 carries no CORS header.**
+Starlette's `ServerErrorMiddleware` sits outside `CORSMiddleware`, so the browser
+cannot read the response and reports `TypeError: Failed to fetch`. Reproduced
+exactly:
+
+```
+status: 500
+access-control-allow-origin: *** MISSING ***
+```
+
+Three fixes:
+
+1. **`main.py`** — a global `Exception` handler returns a JSON 500. Being *handled*
+   means the response travels back out through the CORS middleware, so the real
+   status reaches the client. Every server error in the app was previously
+   indistinguishable from a network failure.
+2. **`core/tenancy.py`** — `require_known_org()` returns **404 with a usable
+   sentence** ("sign out and sign in again — its data may have been reset").
+   Called on upload *after* the file check, so "this is not a PDF" still wins as
+   the more specific answer.
+3. **`apps/web/src/api.ts`** — `throwIfFailed()` clears the dead session on that
+   404, so the app returns to sign-in instead of failing every request. Both fetch
+   paths use it: `uploadTender` had its own `fetch` and would otherwise have been
+   missed.
+
+Verified on a spare port so the running dev server was left alone:
+
+```
+STALE org: 404  CORS=http://localhost:5173   "this organisation no longer exists…"
+GOOD  org: 409  CORS=http://localhost:5173   (duplicate document — expected)
+```
+
+Regression test in `tests/test_upload_api.py`. Two existing tests caught a
+first attempt that put the org check before the file check and turned a non-PDF
+into a 404 instead of 415 — the order now reflects which answer is more specific.
+
+Also fixed the same day: `test_console_api.py::test_full_run_records_every_agent_call`
+never called `/extract` or `/check`, so extractor, matcher and riskscorer recorded no
+runs. That was an omission from the earlier R2 change (extraction became opt-in and
+the `/extract` + `/check` calls were inserted into the other tests but not this one).
+
+---
+
+## Source tags leaked into the exported proposal (2026-07-29)
+
+Reported with a real exported document: the prose was full of `[F:f86aed8e]` and
+runs of twelve `[P:...]` tags in a row.
+
+Those are the proof chain. The ProposalWriter tags every factual sentence to the
+company fact or catalogue product it came from, the FactChecker parses them, and each
+claim's `source_tag` is derived from them — so they **must** stay in the stored
+content. They must equally never reach a reader: a tender proposal handed to a buyer
+with `[F:f86aed8e]` mid-sentence looks broken, and bids are rejected on presentation.
+
+`render_for_reader()` in `services/proposal.py` strips them and tidies the debris —
+`"certification , ISO"` back to `"certification, ISO"`, and the gap a run of twelve
+tags leaves behind — while leaving paragraph breaks alone.
+
+Wired in two places, deliberately **not** by stripping `content` itself:
+
+- `services/export.py` — the .docx now renders the clean prose.
+- `routers/proposal.py` — a new `content_display` field beside `content`. Keeping
+  them separate matters: `editSection` exists (unused by the UI today), and if a
+  future editor round-tripped stripped text it would silently destroy the
+  provenance.
+- `ProposalPanel.tsx` shows `content_display`; the claims list below still shows
+  each `source_tag`, so provenance is visible as structured data rather than noise
+  in the sentence.
+
+Verified on the exact tender the user exported: **80 tags in stored content, 0 in the
+display text, 0 in the rebuilt .docx.** Frontend test added
+(`never shows the internal source tags in the prose`) — 88 web tests now.
+
+## "The chatbot is not working"
+
+Same session. Root cause: **Docker had died again**, so Postgres and LiteLLM were
+both gone. `/organizations` was returning 500 (`ConnectionRefusedError`), and chat
+fell back to the grounded-quote template. After restarting Docker the chat answers
+properly, cites pages, and correctly says a figure is *not stated* rather than
+inventing one.
+
+**A real bug surfaced underneath it:** `availability.cached()` had no expiry, so the
+first probe won forever. An API that starts while the LiteLLM container is still
+booting cached `deterministic` and reported it for the rest of the process — the UI
+badge claimed templates long after real models were reachable. A badge that lies
+about whether an answer came from a model is worse than no badge. The cache now
+expires after 60 s, so it self-heals; `?refresh=true` still forces it.
+
+Confirmed: `mode: deterministic` (all three roles `ConnectError`) → after Docker came
+back → `mode: live`, all three OK.
+
+---
+
+## An upload could disappear from the product (2026-07-29)
+
+Reported: two files uploaded, both said parsed, neither visible in any radar tab.
+
+`/radar` filtered `WHERE radar_list IS NOT NULL`. Triage assigns that list, and
+triage runs **after** the parse, in a background task — so for as long as reading
+takes, an upload existed in the database and appeared nowhere in the UI. A scanned
+9-page PDF takes ~80 s through OCR, which is 80 s of a tender being simply gone. A
+tender whose parse *failed* never got a list at all, so it stayed invisible for ever:
+`GEM/2026/B/7583887` had been sitting unreachable.
+
+Fixes:
+
+- `/radar` now also returns untriaged tenders, in every tab — they have not been
+  sorted into a lane, so they belong in all of them until they are.
+- New `parse_status` on the card (the latest parse run's status), so the UI can say
+  *which* of the three states a tender is in rather than showing a blank.
+- `radar_list` became `str | None` on the response model. It had been declared `str`,
+  so the first untriaged card raised a pydantic `ValidationError` → 500.
+
+UI, in `App.tsx` + a new `ReadingIndicator` primitive:
+
+- **being read** — an animated ring plus three pulsing dots, with the honest reason
+  ("scanned pages go through OCR, which can take a few minutes");
+- **could not be read** — says so, in danger colour, and points at the workspace;
+- **read but not yet scored** — a quiet line, no spinner;
+- **"Process with AI" is disabled while reading.** Pressing it mid-parse would have
+  extracted from a document with no elements yet.
+- The radar **polls every 4 s while anything is mid-parse** and stops when nothing
+  is. Without that the card sat at "Reading…" until the user guessed and reloaded.
+
+Verified live end to end: uploaded the user's own `2.0 ocr.pdf`, watched the radar
+report `(untriaged) parse=running` for six consecutive polls, confirmed the browser
+rendered one `reading-indicator` with `Process with AI` disabled, then confirmed it
+became `needs_human / parse=succeeded` after ~80 s — with no reload.
+
+## The chatbot refused "What is this tender"
+
+Screenshot showed the most natural first question getting *"I can only discuss the
+tenders in this workspace."*
+
+`"what"`, `"this"` and `"tender"` are all in `_STOPWORDS`, so the question reduced to
+**no searchable terms**, matched no element, and fell through the retrieval branch
+into the hard refusal. Refusal has to mean "you asked about something else", never
+"you asked broadly".
+
+A question with no distinctive terms is now answered from the opening of the
+document, which is where a tender states what it is. The scope boundary is untouched
+for anything that *does* name other things. Verified live:
+
+| question | result |
+|---|---|
+| What is this tender | answered, 6 citations — *"Supply, Installation & Commissioning of Pallet Racking System (p.1)"* |
+| What is the EMD? | answered — *"Rs. 24,00,000/- … (p.6)"* |
+| who won the cricket match yesterday | **refused**, `out_of_scope` |
+
+Test added to `tests/test_chat_api.py` covering both halves in one tender (a second
+upload of the same fixture is a duplicate document and returns 409, which is what
+the first attempt tripped over).
+
+---
+
+## Portal expansion: reconnaissance before adapters (2026-07-30)
+
+Asked to add scraping for IREPS, bank portals, CWC/FCI, seven PSUs, metros, AAI and
+hospitals — ranked IREPS first. Recon was done before writing adapters, and it
+changes the ranking.
+
+### What each portal actually permits
+
+| Portal | Status | Finding |
+|---|---|---|
+| **IREPS** (Railways) | ❌ **off-limits** | `robots.txt` is `User-agent: * / Disallow: /` — the entire site forbids automation |
+| ONGC | ❌ | NIC eProcurement **with a captcha** on the listing page |
+| IOCL / NTPC / Coal India | ⚠️ | NIC eProcurement. Listing rows are not served over HTTP, with or without a `JSESSIONID`, and not via the in-page navigation either — only the captcha-protected advanced search returns them |
+| Bank of Baroda | ⚠️ | tender pages allowed by robots, but **every PDF disallowed** (`Disallow: /*.pdf$`), and the listing is JS-rendered with no table rows |
+| PNB | ⚠️ | same shape: JS-rendered, 0 table rows |
+| CWC (cewacor.nic.in) | ⚠️ | an ordinary website, not a NIC instance; needs its own page discovery |
+| BHEL / SAIL | ❓ | `ConnectError` — the hostnames guessed here are wrong |
+| DMRC / FCI | ❓ | pages fetched fine but contain no tender content at the URLs tried |
+
+**So none of the fifteen is a cheap win.** Every one needs a browser, and most cap at
+listing metadata — the same ceiling CPPP already hit. IREPS, the top-ranked
+candidate, cannot be scraped at all without ignoring its robots.txt, which this
+codebase will not do any more than it will solve a captcha.
+
+### What was built anyway, because it is the right shape
+
+Most Indian public buyers run **the same software** — NIC eProcurement — on their own
+host. So `adapters/bidproof_adapters/niceproc/` is one adapter taking a
+`NicPortal(name, host)`, and a new buyer is a line of config rather than a new file:
+
+```
+NIC_PORTALS=iocl:iocletenders.nic.in,ntpc:eprocurentpc.nic.in,coalindia:coalindiatenders.nic.in
+NIC_PORTALS_ENABLED=false
+```
+
+The allow-list grew to seven hosts. An adapter still declares only its own host, so
+it can never widen the SSRF boundary for itself.
+
+**It is disabled by default and currently returns zero tenders**, which is the honest
+state: the listing is not reachable. It is committed because the framework, the
+config path, the allow-list entries and the tests are all real work that any future
+attempt needs.
+
+### The mistake worth recording
+
+The first version reused CPPP's listing parser, which accepts any table row holding
+a link. Run live against IOCL it returned **one "tender"** — actually a web
+announcement, *"Restriction in IOCL E-Tendering Portal towards the number of
+users"*. Inventing a tender out of site furniture is precisely the failure this
+product exists to prevent, and it would have been shipped as a success.
+
+`niceproc/parsing.py` is now strict: a row is a tender only if it carries a
+`page=FrontEndViewTender` link. Re-run live, both portals now report **0** instead of
+a fabrication. Two tests pin it, one of them using the exact announcement text.
+
+### Recommended order, revised
+
+1. **GeM** — already working, and the only source whose documents are fetchable.
+2. **CPPP** — already working, listing only.
+3. **Bank portals** — best remaining target. Robots-permitted, and they cover
+   Security Solutions (safes, vaults, lockers), which currently has **zero** sources.
+   Needs a browser and per-bank parsing; treat BoB's PDF ban as binding.
+4. **CWC / FCI** — highest category relevance (warehouse racking), but the tender
+   pages still need finding.
+5. **NIC PSU instances** — framework is in place; blocked on the captcha, so only
+   worth revisiting if a public listing endpoint is found.
+6. **IREPS** — do not. Their robots.txt forbids it.
+
+### Two portals that DO work: CWC and PNB (2026-07-30)
+
+Asked to show tenders and link out even where the PDF cannot be fetched — the CPPP
+pattern. Two buyers turned out to publish an ordinary HTML table, needing no captcha
+and disallowed by no robots rule. `adapters/bidproof_adapters/htmlportal/` is one
+config-driven adapter for both, verified live:
+
+| | CWC (cewacor.nic.in) | PNB (pnbindia.in) |
+|---|---|---|
+| tenders found | real rows with references, titles, locations | **29** |
+| closing date | parsed (`24-08-2026 03:00:00 PM`) | portal publishes none |
+| per-tender link | ✅ **durable** — `/Home/ViewTenderData?TenderID=…` | ❌ ASP.NET `__doPostBack`, so no tender has a URL |
+| card links to | the tender itself | the listing page |
+
+CWC is the first Indian portal found whose tender link is an **address rather than a
+session ticket**, so "open on portal" genuinely works there — unlike CPPP. It is also
+the closest category match Godrej has: warehouses mean racking. PNB covers safes,
+vaults and lockers, the Security Solutions category, which had **no source at all**.
+
+Both are `html_portals_enabled: false` by default — each costs a browser render per
+cycle. Documents are never fetched by design: Bank of Baroda's robots.txt disallows
+every `*.pdf`, so this family lists and links out exactly as CPPP does.
+
+Seven tests, including one that pins the "Sort by Relevance" control row and the
+header **not** becoming tenders, and one that a closing date which cannot be parsed
+stays absent rather than being guessed — a wrong deadline could lose a bid.
+
+### Captcha bypass: declined
+
+Asked whether a tool could bypass the captcha on the NIC PSU portals. It was not
+attempted and no such tool was added. A captcha is the operator's explicit statement
+that automation is unwelcome, and this codebase already treats it that way for CPPP;
+defeating it would also put the pilot on the wrong side of those portals' terms. The
+NIC PSU instances therefore remain unreachable, and the framework for them stays
+disabled rather than being made to work by force.
+
+### Godrej's own logo in the shell (2026-07-30)
+
+`apps/web/public/godrej-logo.png` (600×600, 61 KB), with
+`seed_godrej_public.py` setting the branding so a reseed keeps it:
+
+```json
+{"logo_url": "/godrej-logo.png", "primary_color": "#C7017F"}
+```
+
+Served by Vite from `public/`, so it works offline and is version-controlled with
+the code rather than hot-linked. `primary_color` is the crimson from the mark
+itself, which `OrgBadge` uses for the monogram if the image ever fails to load —
+a missing file degrades to initials instead of breaking the shell.
+
+Verified live: `/godrej-logo.png` serves 200 `image/png` 61,192 bytes, both badges
+render as `IMG` with `naturalWidth 600` and `loaded: true`, and `npm run build`
+copies it into `dist/`. 88 web tests pass.
+
+---
+
+## Why both radar lists were always empty (2026-07-30)
+
+Asked what "In our lane" and "Opportunity radar" are for, since nothing ever
+appeared in them. They were empty because of an arithmetic bug, and the second one
+would have filled with noise once fixed. Both are now corrected.
+
+### Bug 1 — misspelled weight keys halved every tender's confidence
+
+`seed_godrej_public.py` wrote the fit weights as `category_fit` / `value_band` /
+`past_wins`. The scorer reads `category` / `eligibility` / `value` / `location` /
+`win_history`. `_profile_from_row` merged them:
+
+```python
+weights={**default_weights, **(row.weights or {})}
+```
+
+Different key names, so nothing was overridden — three junk keys were **added**:
+
+```
+real  category .35  eligibility .25  value .15  location .10  win_history .15  = 1.00
+junk  category_fit .4   value_band .3   past_wins .3                           = 1.00
+                                                          total_weight  = 2.00
+```
+
+`coverage = known_weight / total_weight` = `0.90 / 2.00` = **0.45**, against a
+`confidence_floor` of 0.50. Every tender failed the floor and went to the human
+queue, permanently. The fit score itself was always right — only the denominator
+was wrong, which is why the numbers looked plausible.
+
+Fixed in two places, because either alone would have left the trap armed:
+* the seed now uses the scorer's own key names;
+* `_known_weights()` drops unrecognised keys and logs them, so a future typo can
+  no longer reach the coverage arithmetic.
+
+### Bug 2 — the relevance threshold was never applied
+
+`thresholds.radar` (0.45) was consulted only to pick the borderline comparison
+point. Membership fell through to `else: OPPORTUNITY_RADAR`, so **every**
+confidently-scored tender outside the lane became an "opportunity". After fixing
+bug 1, that put a Punjab National Bank request for *"suitable ready premises"* on
+the radar at fit **0.10**.
+
+The radar is meant to be the tenders you *could* win but never bid on. Anything
+below `thresholds.radar` is now `not_relevant` — kept for audit, hidden from the
+default radar view, still reachable with `?list=not_relevant`. Migration **0022**
+widens the `ck_tenders_radar_list` CHECK; its downgrade moves such rows back to
+`needs_human` rather than dropping them.
+
+### Result, re-triaging the 57 live tenders
+
+| list | n | avg fit |
+|---|---|---|
+| **in_our_lane** | **2** | 0.66 |
+| needs_human | 52 | 0.14 |
+| not_relevant | 3 | 0.21 |
+
+The two in-lane tenders are both genuine storage-racking work (a GeM bid and a CWC
+storage-space offer). `opportunity_radar` is legitimately empty for this batch:
+nothing scored 0.45–0.55 outside the lane.
+
+### Why 52 still abstain — and the one lever that moves them
+
+Of the 52: 35 fail on coverage, 17 are borderline. Signals unknown across them:
+
+| signal | unknown |
+|---|---|
+| value | 52 of 52 |
+| location | 52 of 52 |
+| win_history | 50 |
+| eligibility | 35 |
+
+* **value** — portal listings do not publish a tender value, and a listing-only
+  tender has no document to read one from. It becomes known after the PDF is
+  fetched and parsed.
+* **location** — `org_profiles.locations` is `[]`, so this signal can *never*
+  score. That is 0.10 of coverage lost on every tender in the system, for free.
+  Filling it is the cheapest single improvement available.
+* **eligibility** is still explicitly provisional in the scorer ("the real
+  rule-by-rule check against the capability DB is Week-3 work"), so it improves
+  only when value or a closing date is known — not from the capability database.
+
+Worth noting for expectations: triage runs after a *parse*, never after
+`/extract`, `/check` or a proposal. So processing a tender with AI and generating
+proposals genuinely cannot change its radar list today — re-triage on those events
+is the obvious follow-up, and is not yet wired.
+
+Three tests added to `tests/test_triage_scoring.py`, including one that pins the
+weights arithmetic and one using the real PNB title that was misfiled. 197 fast
+tests pass.
+
+---
+
+## Evaluation: real measurement per component (2026-07-30)
+
+Asked for a tab measuring accuracy for every tool — extraction, Docling,
+pypdfium2, OCR, scraping, RAG, proposals — with the explicit requirement that the
+numbers be real, because improving accuracy depends on them.
+
+### The starting position, checked rather than assumed
+
+The suspicion was "it's hardcoded for LLMs". Half right, and the half that was
+wrong matters:
+
+* The **Analytics screen is already honest** — it carries `is_this_honest` flags
+  and prints "Not calibrated yet" instead of drawing an invented curve.
+* `tests/goldset_harness.py` is a **real** harness over 25 labelled cases. But the
+  cases are **synthetic**, generated alongside the extractor's own patterns, which
+  is why every figure in `eval_report.json` is exactly 1.00. That is not accuracy;
+  it is a regression check wearing accuracy's clothes.
+* There is **no embedding retrieval in the product at all** — the librarian has
+  only `blocks.py`, and Ask BidProof scores elements by keyword overlap. "RAG
+  evaluation" had nothing to evaluate.
+
+### The design rule
+
+A number is only useful if its provenance travels with it, so `GroundTruth` is
+part of the type, not a comment: `human_labelled`, `synthetic`, `derived`,
+`self_reported`, `none`. Every metric also carries its sample size and whether
+higher is better — a character error rate coloured like an accuracy is a lie told
+in green. `Status.NO_GROUND_TRUTH` and `NOT_IMPLEMENTED` are first-class results
+that render as themselves and say what would be needed instead.
+
+### What is measured, and how
+
+| Component | Ground truth | Result on this machine |
+|---|---|---|
+| **OCR (RapidOCR)** | **synthetic, exact** | **CER 0.88 %**, words 93.2 %, **figures 100 %** |
+| **Scraping** | derived | cppp 1.00, cwc 1.00, gem 0.667, pnb 0.667 field completeness |
+| **Rule extraction** | synthetic | P/R/F1 1.00 — caveated, see below |
+| **Proposals** | self-reported | no sections generated yet |
+| **Text engines** | derived | Docling vs pypdfium2: characters, pages lost, time |
+| **Retrieval** | none | `not_implemented`, with the file format to add later |
+
+**OCR is the strongest addition.** Ground truth is generated by rendering known
+sentences — rupee amounts, clause numbers, dates, ISO standards — then flattening
+the page to an image so no text layer survives. The correct answer is known
+exactly, so character error rate is a true measurement rather than an estimate.
+Its limit is reported with it: clean rendered text is an upper bound, not a
+smudged photocopy. Measured: **0.88 % CER, and all six figures read exactly** —
+which is the number that actually matters, since a bid turns on an EMD amount.
+
+**Text engines needs no labels at all.** Running Docling and pypdfium2 over the
+same pages answers the question that matters — is the heavy engine returning more
+than the cheap one, and how often does it hand back nothing for a page that
+demonstrably has text. On this project that is not hypothetical: Docling hit
+`std::bad_alloc` on a real tender and silently lost pages.
+
+**Scraping is immediately diagnostic.** GeM and PNB sit at 0.667 field
+completeness against CPPP and CWC at 1.00 — visible in one line, where before it
+would have taken a query to notice.
+
+### What is deliberately not claimed
+
+* Rule extraction reports `synthetic` and carries the caveat in the card, not a
+  footnote: these scores prove the extractor has not regressed, not that it reads
+  real tenders. The fix is stated — replace the gold PDFs with real tenders and
+  hand-label them; ten real cases beat a hundred synthetic.
+* Retrieval reports `not_implemented`. A recall@k of 0.0 would read as "our
+  retrieval is terrible" rather than "there is no retrieval", so no number is
+  produced at all.
+* An evaluator that crashes returns `ERROR` with the exception, never a zero.
+
+### Shape
+
+```
+apps/api/app/services/evaluation/
+    types.py      Status, GroundTruth, Metric, Evaluation
+    readers.py    OCR character error rate; Docling vs pypdfium2
+    pipeline.py   extraction, scraping, proposals, retrieval
+    registry.py   what exists, fast vs slow, run_one / run_all
+apps/api/app/routers/evaluation.py    GET /evaluation/catalogue, POST /evaluation/run
+apps/web/src/screens/Evaluation.tsx   the tab
+```
+
+The two expensive evaluators (OCR, text engines) are opt-in behind "Run
+everything", and a test pins that they can never run because someone opened a
+screen.
+
+**205 backend tests** (8 new), **88 web tests**, `tsc` clean. Verified end to end
+through the live API.

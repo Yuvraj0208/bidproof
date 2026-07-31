@@ -1,7 +1,7 @@
 // US-09 + US-11: sections render with claim badges, three scores, and
 // individual approval that is blocked while a flag is open.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProposalPanel } from "./ProposalPanel";
 import type { Proposal, ProposalSection } from "../api";
 
@@ -10,6 +10,7 @@ const clean: ProposalSection = {
   section_tag: "company_profile",
   position: 0,
   content: "Annual turnover of ₹150.00 crore in FY 2024-25. [F:aaaaaaaa]",
+  content_display: "Annual turnover of ₹150.00 crore in FY 2024-25.",
   claims: [
     { text: "Annual turnover of ₹150.00 crore. [F:aaaaaaaa]",
       source_tag: "[F:aaaaaaaa]", status: "verified" },
@@ -44,6 +45,10 @@ const PROPOSAL: Proposal = {
 };
 
 describe("ProposalPanel", () => {
+  // The approver's name is remembered across reloads, so it must not leak
+  // between tests — one test's name would silently enable another's button.
+  beforeEach(() => localStorage.clear());
+
   it("shows the three per-section scores", () => {
     render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
                           onApprove={() => {}} busy={false} />);
@@ -102,5 +107,100 @@ describe("ProposalPanel", () => {
     render(<ProposalPanel proposal={null} onGenerate={() => {}}
                           onApprove={() => {}} busy={false} />);
     expect(screen.getByText(/once the decision is GO/)).toBeInTheDocument();
+  });
+
+  it("offers a way to resolve a flagged claim", () => {
+    // The bug this covers: the approve button said "resolve open flags first"
+    // and nothing in the product could resolve one. The section could not be
+    // approved and could not be exported — a dead end.
+    const onResolveClaim = vi.fn();
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onResolveClaim={onResolveClaim}
+                          busy={false} />);
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+
+    fireEvent.click(screen.getByTestId("claim-drop"));
+    expect(onResolveClaim).toHaveBeenCalledWith("s-2", 0, "drop", "Priya N", "");
+  });
+
+  it("asks for a written reason before keeping a contradicted claim", () => {
+    // Removing an unproven sentence is the safe direction and needs no
+    // justification. Keeping one in a bid document is the decision that does.
+    const onResolveClaim = vi.fn();
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onResolveClaim={onResolveClaim}
+                          busy={false} />);
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+
+    fireEvent.click(screen.getByTestId("claim-accept"));
+    const confirm = screen.getByTestId("claim-accept-confirm");
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText(/Why is this claim right/),
+                     { target: { value: "Certificate renewed, not yet loaded" } });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+    expect(onResolveClaim).toHaveBeenCalledWith(
+      "s-2", 0, "accept", "Priya N",
+      "Certificate renewed, not yet loaded",
+    );
+  });
+
+  it("cannot resolve a claim without a name", () => {
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} onResolveClaim={() => {}}
+                          busy={false} />);
+    expect(screen.getByTestId("claim-drop")).toBeDisabled();
+  });
+
+  it("shows who resolved a claim, and stops offering to resolve it again", () => {
+    const resolved: Proposal = {
+      ...PROPOSAL,
+      sections: [{
+        ...flagged,
+        claims: [{ ...flagged.claims[0], resolution: "accept",
+                   resolved_by: "Priya N" }],
+        open_flags: [],
+      }],
+    };
+    render(<ProposalPanel proposal={resolved} onGenerate={() => {}}
+                          onApprove={() => {}} onResolveClaim={() => {}}
+                          busy={false} />);
+    expect(screen.getByTestId("claim-resolved")).toHaveTextContent(
+      "accepted by Priya N",
+    );
+    expect(screen.queryByTestId("claim-drop")).toBeNull();
+  });
+
+  it("remembers the approver's name across reloads", () => {
+    const { unmount } = render(
+      <ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                     onApprove={() => {}} busy={false} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/Your name/),
+                     { target: { value: "Priya N" } });
+    unmount();
+
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
+    expect(screen.getByPlaceholderText(/Your name/)).toHaveValue("Priya N");
+    // Still one approval per section: remembering a name is convenience,
+    // not a bulk action (SPEC §3.2 US-11).
+    expect(screen.getAllByTestId("approve-button")).toHaveLength(2);
+    expect(screen.queryByText(/approve all/i)).toBeNull();
+  });
+
+  it("never shows the internal source tags in the prose", () => {
+    // The tag is the proof chain and stays in `content`; a buyer reading
+    // "[F:aaaaaaaa]" mid-sentence sees a broken document.
+    render(<ProposalPanel proposal={PROPOSAL} onGenerate={() => {}}
+                          onApprove={() => {}} busy={false} />);
+    const prose = screen.getAllByTestId("section-prose")[0];
+    expect(prose.textContent).not.toContain("[F:");
+    expect(prose.textContent).toContain("FY 2024-25.");
+    // The provenance is still shown, as structured data beside the prose.
+    expect(screen.getAllByTestId("claim")[0].textContent).toContain("[F:aaaaaaaa]");
   });
 });

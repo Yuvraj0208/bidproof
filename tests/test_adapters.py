@@ -232,3 +232,238 @@ async def test_cppp_still_refuses_an_off_portal_feed_url():
             "https://evil.example.com/feed", use_browser=False
         ).discover(fetcher)
     await fetcher.aclose()
+
+
+# --- NIC eProcurement: one adapter, many public buyers ----------------------
+
+
+def test_nic_portal_builds_the_platform_listing_url():
+    """Every NIC eProcurement instance serves the same path on its own host, so a
+    new public buyer is configuration rather than code."""
+    from bidproof_adapters.niceproc import NicPortal
+
+    portal = NicPortal(name="iocl", host="iocletenders.nic.in")
+    assert portal.listing_url == (
+        "https://iocletenders.nic.in"
+        "/nicgep/app?page=FrontEndLatestActiveTenders&service=page"
+    )
+
+
+def test_nic_adapter_is_scoped_to_its_own_host():
+    """An adapter must never widen the allow-list: that is the SSRF boundary."""
+    from bidproof_adapters.niceproc import NicEprocAdapter, NicPortal
+
+    adapter = NicEprocAdapter(NicPortal(name="ntpc", host="eprocurentpc.nic.in"))
+    assert adapter.name == "ntpc"
+    assert adapter.allowed_domains == ("eprocurentpc.nic.in",)
+
+
+async def test_nic_adapter_refuses_a_host_outside_the_allow_list():
+    from bidproof_adapters.niceproc import NicEprocAdapter, NicPortal
+
+    adapter = NicEprocAdapter(NicPortal(name="evil", host="evil.example.com"))
+    fetcher = GuardedFetcher(ALLOW)
+    with pytest.raises(BlockedDomainError):
+        await adapter.discover(fetcher)
+    await fetcher.aclose()
+
+
+async def test_nic_adapter_says_so_when_no_browser_is_installed():
+    """Plain HTTP returns the page furniture with an EMPTY tender table, so
+    reporting "no tenders" would be a lie. It raises instead, and the Scout
+    records this one portal as failed while the others keep flowing."""
+    from bidproof_adapters import niceproc
+    from bidproof_adapters.niceproc import NicEprocAdapter, NicPortal
+
+    adapter = NicEprocAdapter(NicPortal(name="iocl", host="iocletenders.nic.in"))
+    fetcher = GuardedFetcher(DomainAllowList(["iocletenders.nic.in"]))
+    original = niceproc.adapter.playwright_available
+    niceproc.adapter.playwright_available = lambda: False
+    try:
+        with pytest.raises(RuntimeError, match="need a real browser"):
+            await adapter.discover(fetcher)
+    finally:
+        niceproc.adapter.playwright_available = original
+        await fetcher.aclose()
+
+
+def test_malformed_portal_config_is_skipped_not_fatal():
+    from app.services.discovery import parse_nic_portals
+
+    portals = parse_nic_portals("iocl:iocletenders.nic.in, ,broken,ntpc:eprocurentpc.nic.in")
+    assert [p.name for p in portals] == ["iocl", "ntpc"]
+
+
+def test_nic_parser_ignores_announcements_and_navigation():
+    """The first attempt reused the CPPP parser and reported IOCL's web
+    announcement "Restriction in IOCL E-Tendering Portal towards the number of
+    users" as a tender. A row is a tender only if it links to one."""
+    from bidproof_adapters.niceproc import parse_tender_list
+
+    html = """
+    <table>
+      <tr><td><a href="/nicgep/app?page=WebAnnouncements&service=page#429">
+          Restriction in IOCL E-Tendering Portal towards the number of users</a></td></tr>
+      <tr><td><a href="/nicgep/app?page=FrontEndAdvancedSearch&service=page">Search</a></td></tr>
+      <tr>
+        <td>1</td>
+        <td>12-Aug-2026 15:00</td>
+        <td>Supply of heavy duty pallet racking for the Panipat depot</td>
+        <td>IOCL/2026/RACK/4417</td>
+        <td><a href="/nicgep/app?page=FrontEndViewTender&service=page&id=9911">View</a></td>
+      </tr>
+    </table>
+    """
+    found = parse_tender_list(html, portal="iocl", base_url="https://iocletenders.nic.in/nicgep/app")
+
+    assert len(found) == 1, [t.title for t in found]
+    tender = found[0]
+    assert tender.portal == "iocl"
+    assert tender.title.startswith("Supply of heavy duty pallet racking")
+    assert tender.external_id == "IOCL/2026/RACK/4417"
+    assert tender.url.endswith("page=FrontEndViewTender&service=page&id=9911")
+    assert tender.closing_at is not None
+    assert (tender.closing_at.day, tender.closing_at.month) == (12, 8)
+
+
+def test_nic_parser_returns_nothing_rather_than_guessing():
+    """An empty listing must produce zero tenders, not site furniture."""
+    from bidproof_adapters.niceproc import parse_tender_list
+
+    html = "<table><tr><td>Tender Title</td><td>Closing Date</td></tr></table>"
+    assert parse_tender_list(html, portal="ntpc", base_url="https://x/nicgep/app") == []
+
+
+# --- Plain HTML tender tables: CWC and PNB ----------------------------------
+
+
+CWC_ROW = """
+<table>
+  <tr><th>Sr.No</th><th>Work/Item Title</th><th>Tender Reference Number</th>
+      <th>Location Detail</th><th>Inviting Officer</th>
+      <th>Bid Sub.Closing Date</th><th>View</th></tr>
+  <tr><td colspan="7">Sort by Relevance Date</td></tr>
+  <tr>
+    <td>1</td>
+    <td>Appointment of Strategic Alliance Management Operator for ICD Valvada</td>
+    <td>CWC/RO-AHD/BUSI.(Proj.)-75(2022)/SAMO/ICD-VALVADA/2026-27</td>
+    <td>CWC-ICD VALVADA, UMBERGAON (VALSAD), GUJARAT,</td>
+    <td>RM,CWC,RO,Ahmedabad</td>
+    <td>24-08-2026 03:00:00 PM</td>
+    <td><a href="/Home/ViewTenderData?TenderID=teYAgznZDJ%2FCsY5NCag7DA%3D%3D">View</a></td>
+  </tr>
+</table>
+"""
+
+
+def test_cwc_row_parses_with_a_durable_per_tender_link():
+    """CWC is the only Indian portal found whose tender link is an address
+    rather than a session ticket, so "open on portal" genuinely works."""
+    from bidproof_adapters.htmlportal import CWC, parse_table
+
+    found = parse_table(CWC_ROW, CWC)
+    assert len(found) == 1, [t.title for t in found]
+    t = found[0]
+    assert t.portal == "cwc"
+    assert t.title.startswith("Appointment of Strategic Alliance")
+    assert t.external_id.startswith("CWC/RO-AHD")
+    assert t.url == (
+        "https://cewacor.nic.in/Home/ViewTenderData"
+        "?TenderID=teYAgznZDJ%2FCsY5NCag7DA%3D%3D"
+    )
+    assert t.closing_at is not None
+    assert (t.closing_at.day, t.closing_at.month, t.closing_at.hour) == (24, 8, 15)
+    assert "VALVADA" in (t.organisation or "")
+
+
+def test_header_and_control_rows_are_not_tenders():
+    """The "Sort by Relevance" control row and the header must not become
+    tenders — the mistake that turned an IOCL announcement into one."""
+    from bidproof_adapters.htmlportal import CWC, parse_table
+
+    assert len(parse_table(CWC_ROW, CWC)) == 1
+
+
+def test_pnb_row_falls_back_to_the_listing_when_no_link_exists():
+    """PNB's rows are ASP.NET __doPostBack calls, so no tender has a URL. The
+    card points at the listing rather than inventing a deep link."""
+    from bidproof_adapters.htmlportal import PNB, parse_table
+
+    html = """
+    <table>
+      <tr><td>1</td><td>CO BIKANER</td>
+          <td><a href="javascript:__doPostBack('ctl00$rptGrid$ctl00$lbtnTenderTitle','')">
+              OFFERs FOR PREMISES ON LEASE WITHIN THE VICINITY OF G S ROAD</a></td></tr>
+    </table>
+    """
+    found = parse_table(html, PNB)
+    assert len(found) == 1
+    assert found[0].url == "https://www.pnbindia.in/Tender.aspx"
+    assert "javascript" not in found[0].url
+    assert found[0].closing_at is None, "PNB publishes no closing date column"
+
+
+def test_an_unparseable_closing_date_stays_absent():
+    """Never guess a deadline: a wrong one could lose a bid."""
+    from bidproof_adapters.htmlportal.parsing import parse_closing
+
+    assert parse_closing("24-08-2026 03:00:00 PM") is not None
+    assert parse_closing("") is None
+    assert parse_closing("as per portal") is None
+
+
+def test_html_adapter_is_scoped_to_its_own_host():
+    from bidproof_adapters.htmlportal import CWC, HtmlPortalAdapter
+
+    adapter = HtmlPortalAdapter(CWC)
+    assert adapter.name == "cwc"
+    assert adapter.allowed_domains == ("cewacor.nic.in",)
+
+
+async def test_html_adapter_refuses_a_host_outside_the_allow_list():
+    from bidproof_adapters.htmlportal import HtmlPortalAdapter, TableProfile
+
+    rogue = TableProfile(name="rogue", listing_url="https://evil.example.com/t", title_col=1)
+    fetcher = GuardedFetcher(ALLOW)
+    with pytest.raises(BlockedDomainError):
+        await HtmlPortalAdapter(rogue).discover(fetcher)
+    await fetcher.aclose()
+
+
+# --- The browser must work under a selector event loop ----------------------
+
+
+def test_render_does_not_use_the_async_playwright_api():
+    """Windows + uvicorn is a selector event loop, which cannot spawn
+    subprocesses — so `async_playwright()` dies with a bare NotImplementedError.
+    A live discovery run recorded exactly that: `gem: NotImplementedError` while
+    cppp succeeded, so every browser adapter was broken inside the API while
+    working fine from a script.
+
+    The renderer therefore uses Playwright's SYNC api on a worker thread, which
+    launches its driver with plain `subprocess` and ignores the loop type. This
+    pins that: reintroducing `async_playwright` would break the API again.
+    """
+    from pathlib import Path
+
+    import bidproof_adapters.browser as browser
+
+    source = Path(browser.__file__).read_text(encoding="utf-8")
+    # Match the IMPORT, not the word — the docstring explains why the async API
+    # is avoided, and that explanation should stay.
+    assert "playwright.async_api" not in source, (
+        "async_playwright cannot launch under uvicorn's SelectorEventLoop"
+    )
+    assert "playwright.sync_api" in source
+    assert "to_thread" in source, "the blocking render must not block the loop"
+
+
+async def test_render_still_refuses_an_off_allow_list_url_before_launching():
+    """The guard runs before any browser starts — no process is spawned for a
+    host we are not allowed to visit."""
+    from bidproof_adapters.browser import render
+
+    fetcher = GuardedFetcher(ALLOW)
+    with pytest.raises(BlockedDomainError):
+        await render("https://evil.example.com/tenders", fetcher)
+    await fetcher.aclose()

@@ -14,6 +14,9 @@ from bidproof_adapters import DiscoveredTender, DomainAllowList, GuardedFetcher
 from bidproof_adapters.contract import PortalAdapter
 from bidproof_adapters.cppp import CpppAdapter
 from bidproof_adapters.gem import GemAdapter
+from bidproof_adapters.htmlportal import PROFILES as HTML_PROFILES
+from bidproof_adapters.htmlportal import HtmlPortalAdapter
+from bidproof_adapters.niceproc import NicEprocAdapter, NicPortal
 from bidproof_scout import run_adapters
 
 from app.core.config import get_settings
@@ -28,12 +31,47 @@ from app.storage import ObjectStorage
 logger = logging.getLogger(__name__)
 
 
+def parse_nic_portals(spec: str) -> list[NicPortal]:
+    """"name:host,name:host" -> portals. A malformed entry is skipped and logged
+    rather than taking discovery down with it."""
+    portals: list[NicPortal] = []
+    for entry in (spec or "").split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        name, _, host = entry.partition(":")
+        if not name or not host:
+            logger.warning("ignoring malformed nic_portals entry %r", entry)
+            continue
+        portals.append(NicPortal(name=name.strip(), host=host.strip()))
+    return portals
+
+
 def get_adapters() -> list[PortalAdapter]:
     settings = get_settings()
-    return [
+    adapters: list[PortalAdapter] = [
         GemAdapter(bids_url=settings.gem_bids_url),
         CpppAdapter(feed_url=settings.cppp_feed_url),
     ]
+    # NIC eProcurement portals (IOCL, NTPC, Coal India, ...). Off unless asked
+    # for: each is a browser render per cycle and yields listing metadata only.
+    if settings.nic_portals_enabled:
+        adapters += [
+            NicEprocAdapter(portal) for portal in parse_nic_portals(settings.nic_portals)
+        ]
+    # Buyers publishing a plain HTML table (CWC, PNB).
+    if settings.html_portals_enabled:
+        for name in (settings.html_portals or "").split(","):
+            name = name.strip()
+            if not name:
+                continue
+            profile = HTML_PROFILES.get(name)
+            if profile is None:
+                logger.warning("unknown html portal %r — known: %s",
+                               name, sorted(HTML_PROFILES))
+                continue
+            adapters.append(HtmlPortalAdapter(profile))
+    return adapters
 
 
 def build_allowlist() -> DomainAllowList:

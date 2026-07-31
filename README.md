@@ -59,6 +59,8 @@ An output that cannot point at its source is **thrown away, not down-scored**. T
 
 A team of small, single-job agents behind one orchestrator. Each has its own guardrails, its own tests, and a one-page manifest. They talk only through typed state — never free text.
 
+The Conductor is a LangGraph state graph. Agents that do not depend on each other run in the same superstep — the Matcher and the RiskScorer are drawn side by side above because that is how they execute, and `tests/test_conductor.py` reads the compiled graph to keep this picture honest. The graph stops at every human checkpoint: checkpoints 4–6 are `interrupt()` nodes with a single edge to the end of the run, so there is no branch that could auto-pass one.
+
 ```mermaid
 flowchart TB
     C["Conductor"]
@@ -70,7 +72,8 @@ flowchart TB
         P["Parser"] --> E["Extractor"]
     end
     subgraph judge ["Judge"]
-        M["Matcher"] --> R["RiskScorer"] --> D["Decider"]
+        M["Matcher"] --> D["Decider"]
+        R["RiskScorer"] --> D
     end
     subgraph write ["Write"]
         Q["QuestionWriter"]
@@ -296,6 +299,11 @@ uv run --project apps/api pytest -m "not integration" -q   # 179, no Docker need
 uv run --project apps/api pytest -q                        # 292, needs the stack
 npm --prefix apps/web run test                             # 87
 ```
+
+> **The full suite wipes your data.** The integration fixtures TRUNCATE
+> `organizations` and `tenders` on purpose, so running it against a machine that
+> holds a live demo destroys it. Re-run `infra/seed/seed_godrej_public.py` (or the
+> **Reseed demo data** task) afterwards. The fast suite touches no database.
 
 Beyond unit tests there is a labelled **gold set** for measuring extraction accuracy, and an **attack suite** of poisoned documents that must never change a verdict.
 

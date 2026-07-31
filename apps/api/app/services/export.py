@@ -22,6 +22,7 @@ from app.models import (
     Tender,
     VerdictRow,
 )
+from app.services.proposal import render_for_reader
 
 # A mandatory clause is an eligibility requirement; it is "unaddressed" if we
 # do not satisfy it (a gap) or cannot yet decide it (needs a human).
@@ -65,16 +66,21 @@ async def export_blockers(org_id: uuid.UUID, tender_id: uuid.UUID) -> list[dict]
                 )
             ).scalars().all()
             for section in sections:
+                # A claim a named person has already dropped or vouched for is
+                # resolved, not outstanding. Without this the blocker could
+                # never be cleared by correcting the proposal — only by
+                # overriding the whole export, which is the heavier instrument.
                 contradicted = [
-                    c for c in (section.claims or []) if c["status"] == "contradicted"
+                    c for c in (section.claims or [])
+                    if c["status"] == "contradicted" and not c.get("resolution")
                 ]
                 for claim in contradicted:
                     blockers.append({
                         "type": "contradicted_claim",
                         "section": section.section_tag,
                         "message": f"section '{section.section_tag}' contains a "
-                                   "contradicted claim — it must be corrected "
-                                   "before export",
+                                   "contradicted claim — drop the sentence or "
+                                   "accept it with a reason, in the Proposal tab",
                         "claim": claim["text"][:200],
                     })
     return blockers
@@ -123,7 +129,10 @@ async def _build_docx(org_id: uuid.UUID, tender_id: uuid.UUID) -> bytes:
 
     for section in sections:
         doc.add_heading(section.section_tag.replace("_", " ").title(), level=1)
-        doc.add_paragraph(section.content)
+        # Strip the [F:]/[P:] source tags. They are the proof chain and stay in
+        # the stored content, but a buyer reading "[F:f86aed8e]" mid-sentence
+        # sees a broken document, and a bid can be lost on presentation alone.
+        doc.add_paragraph(render_for_reader(section.content))
 
     # The compliance matrix, attached.
     doc.add_heading("Compliance Matrix", level=1)

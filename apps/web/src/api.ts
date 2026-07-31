@@ -63,12 +63,28 @@ export function authHeaders(): Record<string, string> {
   return { "X-Org-Id": getOrgId(), "X-Role": getRole() };
 }
 
+/** Raise on a failed response, and drop a session whose company is gone.
+ *
+ * The signed-in company can disappear under the app — most easily by running
+ * the integration suite, whose fixtures reset the database. Clearing the dead
+ * session returns the user to the sign-in screen instead of letting every
+ * subsequent request fail.
+ */
+async function throwIfFailed(response: Response): Promise<void> {
+  if (response.ok) return;
+  const body = await response.text();
+  if (response.status === 404 && body.includes("no longer exists")) {
+    signOut();
+  }
+  throw new Error(`${response.status} ${body}`);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { ...authHeaders(), ...(init?.headers ?? {}) },
   });
-  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  await throwIfFailed(response);
   return response.json() as Promise<T>;
 }
 
@@ -130,7 +146,8 @@ export interface RadarCard {
   source: string;
   external_id: string | null;
   closing_at: string | null;
-  radar_list: string;
+  // null while the tender is still being read — triage runs after the parse.
+  radar_list: string | null;
   fit_score: number | null;
   confidence: number | null;
   band: "green" | "yellow" | "red" | null;
@@ -147,6 +164,9 @@ export interface RadarCard {
   portal_hint: string | null;
   // GeM hands over its PDFs directly; CPPP does not. The API decides.
   can_fetch_document: boolean;
+  // "pending" | "running" | "succeeded" | "needs_human" | "failed", or null
+  // when no document has been attached at all.
+  parse_status: string | null;
 }
 
 export interface LearnedPrefill {
@@ -239,13 +259,21 @@ export interface ProposalClaim {
   text: string;
   source_tag: string | null;
   status: "verified" | "cannot_verify" | "contradicted";
+  // Set once a person has dealt with a flagged claim: the sentence was either
+  // removed, or kept on their word with a reason. Both are in the audit log.
+  resolution?: "drop" | "accept" | null;
+  resolved_by?: string | null;
+  resolved_reason?: string | null;
 }
 
 export interface ProposalSection {
   id: string;
   section_tag: string;
   position: number;
+  // `content` carries the [F:]/[P:] source tags — the proof chain. Show
+  // `content_display` to a person; it is the same prose without them.
   content: string;
+  content_display: string;
   claims: ProposalClaim[];
   verified_pct: number | null;
   requirements_covered_pct: number | null;
@@ -281,6 +309,24 @@ export const approveSection = (tenderId: string, sectionId: string, name: string
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
+    },
+  );
+
+/** Resolve one flagged claim so its section can be approved (Checkpoint 5). */
+export const resolveClaim = (
+  tenderId: string,
+  sectionId: string,
+  claimIndex: number,
+  action: "drop" | "accept",
+  by: string,
+  reason: string,
+) =>
+  request<ProposalSection>(
+    `/tenders/${tenderId}/proposal/sections/${sectionId}/claims/${claimIndex}/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, by, reason }),
     },
   );
 
@@ -470,7 +516,7 @@ export async function uploadTender(file: File): Promise<UploadResult> {
     headers: authHeaders(),
     body: form,
   });
-  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  await throwIfFailed(response);
   return response.json();
 }
 
@@ -770,3 +816,73 @@ export const fetchPortalDocument = (tenderId: string) =>
     `/tenders/${tenderId}/fetch-document`,
     { method: "POST" },
   );
+
+// --- Evaluation ------------------------------------------------------------
+
+export interface EvaluationMetric {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  higher_is_better: boolean;
+  sample_size: number | null;
+  detail: string;
+}
+
+export interface EvaluationResult {
+  component: string;
+  label: string;
+  what_it_measures: string;
+  status: "measured" | "no_ground_truth" | "not_implemented" | "error";
+  ground_truth: "human_labelled" | "synthetic" | "derived" | "self_reported" | "none";
+  metrics: EvaluationMetric[];
+  blocked_reason: string;
+  how_to_fix: string;
+  duration_s: number | null;
+  measured_at: string;
+}
+
+export const fetchEvaluationCatalogue = () =>
+  request<{ components: { component: string; cost: string; needs_org: boolean }[] }>(
+    "/evaluation/catalogue",
+  );
+
+export const runEvaluation = (opts: { component?: string; includeSlow?: boolean }) => {
+  const params = new URLSearchParams();
+  if (opts.component) params.set("component", opts.component);
+  if (opts.includeSlow) params.set("include_slow", "true");
+  return request<{ results: EvaluationResult[] }>(
+    `/evaluation/run?${params.toString()}`,
+    { method: "POST" },
+  );
+};
+
+// --- Conductor -------------------------------------------------------------
+
+export interface ConductorGraph {
+  nodes: {
+    id: string;
+    gate: number | null;
+    human_only: boolean;
+    parallel_with: string[];
+  }[];
+  edges: { from: string; to: string }[];
+}
+
+/** The pipeline's shape, generated from the compiled graph. */
+export const fetchConductorGraph = () =>
+  request<ConductorGraph>("/conductor/graph");
+
+export const fetchConductorRun = (tenderId: string) =>
+  request<{
+    tender_id: string;
+    nodes: {
+      agent: string;
+      duration_ms: number | null;
+      model_role: string | null;
+      cost_inr: number | null;
+      meta: Record<string, unknown>;
+    }[];
+    total_cost_inr: number;
+    paused_at: number | null;
+  }>(`/tenders/${tenderId}/conductor/run`);

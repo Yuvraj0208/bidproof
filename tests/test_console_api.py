@@ -18,6 +18,12 @@ async def test_full_run_records_every_agent_call(owner_conn):
 
     async with client_for(app, org_id) as client:
         tender_id = await seed_and_upload(client)
+        # Upload parses and triages, and stops there: extraction and checking
+        # cost money, so a human opts each tender in (FINISH_STATUS R2). A
+        # "full run" therefore has to ask for them, exactly as the UI's
+        # "Process with AI" button does.
+        await client.post(f"/tenders/{tender_id}/extract")
+        await client.post(f"/tenders/{tender_id}/check")
         await client.post(f"/tenders/{tender_id}/decide",
                           json={"tender_value_inr": 5e7})
         console = (await client.get(f"/tenders/{tender_id}/agent-runs")).json()

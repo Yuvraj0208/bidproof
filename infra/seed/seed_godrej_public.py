@@ -22,6 +22,7 @@ Run with --org-slug to seed a different tenant.
 
 import argparse
 import asyncio
+import json
 import uuid
 from datetime import date
 
@@ -91,6 +92,13 @@ _LOAD_NOTE = {"beam_pair_load_kg": 4000, "frame_load_tonnes_max": 35,
               "max_height_m": 50, "seismic_zone": 5}
 _STANDARDS = ["EN 15512", "FEM", "RMI", "ISO 9001"]
 
+# Godrej's own mark, and the crimson from it for the monogram fallback.
+BRANDING = {
+    "logo_url": "/godrej-logo.png",
+    "primary_color": "#C7017F",
+}
+
+
 def _rack(code: str, name: str, category: str = "storage racks", **extra) -> dict:
     return dict(
         product_code=code, product_name=name, category=category,
@@ -132,7 +140,19 @@ PROFILE = {
         {"name": "security solutions",
          "keywords": ["safe", "vault", "locker", "security", "lock"]},
     ],
-    "weights": {"category_fit": 0.4, "value_band": 0.3, "past_wins": 0.3},
+    # These keys MUST match the scorer's component names exactly
+    # (agents/triage/bidproof_triage/scoring.py): category, eligibility, value,
+    # location, win_history. They were once written as category_fit/value_band/
+    # past_wins, which the scorer never looked up — so the weights silently did
+    # nothing AND doubled the coverage denominator, pinning every tender in the
+    # "needs human" queue for ever.
+    "weights": {
+        "category": 0.35,
+        "eligibility": 0.25,
+        "value": 0.15,
+        "location": 0.10,
+        "win_history": 0.15,
+    },
     # Godrej bids across a very wide range; the band is deliberately open.
     "value_band_inr": {"min_inr": 100_000, "max_inr": 50_000_000_000},
     "win_categories": ["storage racks", "material handling"],
@@ -166,6 +186,16 @@ async def main() -> None:
             print(f"  created organisation {org_id} ({args.org_slug})")
         else:
             print(f"  organisation exists {org_id} ({args.org_slug})")
+
+        # Branding: the logo is served by the web app from apps/web/public, so it
+        # works offline and is version-controlled alongside the code. OrgBadge
+        # falls back to a monogram in `primary_color` if the image ever fails to
+        # load, so a missing file degrades instead of breaking the shell.
+        await session.execute(
+            text("UPDATE organizations SET branding = CAST(:b AS jsonb) WHERE id = :i"),
+            {"i": org_id, "b": json.dumps(BRANDING)},
+        )
+        print(f"  branding set (logo {BRANDING['logo_url']})")
 
         profile = await session.get(OrgProfile, org_id)
         if profile is None:

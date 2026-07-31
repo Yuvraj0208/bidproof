@@ -32,7 +32,14 @@ class SectionOut(BaseModel):
     id: uuid.UUID
     section_tag: str
     position: int
+    # `content` keeps the [F:]/[P:] source tags: they are the proof chain, and
+    # the FactChecker and every claim's source_tag depend on them.
+    # `content_display` is the same prose with the tags removed, for anything a
+    # person reads. Kept as a separate field on purpose — stripping `content`
+    # itself would let a future editor save the clean text back and quietly
+    # destroy the provenance.
     content: str
+    content_display: str
     claims: list
     verified_pct: float | None
     requirements_covered_pct: float | None
@@ -109,7 +116,9 @@ async def read(
             sections=[
                 SectionOut(
                     id=s.id, section_tag=s.section_tag, position=s.position,
-                    content=s.content, claims=s.claims,
+                    content=s.content,
+                    content_display=proposal_service.render_for_reader(s.content),
+                    claims=s.claims,
                     verified_pct=s.verified_pct,
                     requirements_covered_pct=s.requirements_covered_pct,
                     style_match_pct=s.style_match_pct,
@@ -156,6 +165,40 @@ async def approve_section(
     approve-all endpoint — each section is signed off individually."""
     result, error = await proposal_service.approve_section(
         org_id, tender_id, section_id, body.name.strip()
+    )
+    if error is not None:
+        raise HTTPException(409, error)
+    if result is None:
+        raise HTTPException(404, "section not found")
+    return result
+
+
+class ResolveClaimIn(BaseModel):
+    # "drop" removes the sentence; "accept" keeps it on a named person's word.
+    action: str
+    by: str
+    reason: str = ""
+
+
+@router.post(
+    "/tenders/{tender_id}/proposal/sections/{section_id}/claims/{claim_index}/resolve"
+)
+async def resolve_claim(
+    tender_id: uuid.UUID,
+    section_id: uuid.UUID,
+    claim_index: int,
+    body: ResolveClaimIn,
+    org_id: uuid.UUID = Depends(require_org_id),
+) -> dict:
+    """Resolve one flagged claim so its section can be approved.
+
+    The other half of Checkpoint 5. Without it a contradicted claim blocked
+    both approval and export with nothing a person could do about it except
+    override the entire export.
+    """
+    result, error = await proposal_service.resolve_claim(
+        org_id, tender_id, section_id, claim_index,
+        action=body.action, by=body.by, reason=body.reason,
     )
     if error is not None:
         raise HTTPException(409, error)

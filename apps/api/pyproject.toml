@@ -26,6 +26,10 @@ dependencies = [
     "bidproof-formfiller",
     "bidproof-guard",
     "minio>=7.2",
+    # Pinned to a minor range, not >=: interrupt/Command and the checkpoint
+    # saver base class are still moving between minors, and a silent bump
+    # would break the Conductor rather than a test.
+    "langgraph>=0.6,<0.7",
     "langfuse>=2.50",
     "python-multipart>=0.0.9",
     "openpyxl>=3.1",
@@ -62,6 +66,10 @@ dev = [
     "pyyaml>=6",
     "pip-licenses>=5",
     "pre-commit>=4",
+    # Builds the PDF fixtures the parser tests read, and the rendered page the
+    # OCR evaluator scores itself against. Was undeclared, so a clean sync
+    # broke collection in 24 test modules at once.
+    "reportlab>=4",
 ]
 
 [build-system]

@@ -17,6 +17,10 @@ from bidproof_triage.types import OrgProfile, TenderSignals, TriageResult
 IN_OUR_LANE = "in_our_lane"
 OPPORTUNITY_RADAR = "opportunity_radar"
 NEEDS_HUMAN = "needs_human"
+# Scored confidently, and it is simply not this company's work. Kept off
+# the radar rather than deleted: the decision is auditable, and the tender
+# is still reachable by asking for this list explicitly.
+NOT_RELEVANT = "not_relevant"
 
 
 @dataclass(frozen=True)
@@ -128,8 +132,20 @@ def triage(
         )
     elif matched and fit >= thresholds.in_lane:
         radar_list = IN_OUR_LANE
-    else:
+    elif fit >= thresholds.radar:
         radar_list = OPPORTUNITY_RADAR
+    else:
+        # `thresholds.radar` used to be consulted only for the borderline check,
+        # never to decide membership — so this branch was `else: OPPORTUNITY_RADAR`
+        # and swept up everything. A PNB request for "suitable ready premises"
+        # scored 0.10 and was presented as an opportunity Godrej could win. The
+        # radar is supposed to be the tenders you COULD win but never bid on; a
+        # list that also holds everything you could not is just noise.
+        radar_list = NOT_RELEVANT
+        reasons.append(
+            f"fit {fit:.2f} is below the {thresholds.radar:.2f} relevance "
+            "threshold — not shown on the radar"
+        )
 
     checkpoint0 = (
         "auto_passed" if radar_list == IN_OUR_LANE and band == "green" else "queued"

@@ -1,6 +1,7 @@
 // The Agent Console (US-12): every agent call under the tender's trace id,
 // and the totals line that is the whole business case —
 // "5 agent calls · 12,300 tokens · ₹38.40 · 6.2 s" vs two man-days.
+import { PipelineGraph, type PipelineGraphData } from "./PipelineGraph";
 export interface AgentRunData {
   id: string;
   agent: string;
@@ -32,11 +33,17 @@ export function AgentConsole({
   totals,
   onReplay,
   replaying,
+  graph,
+  pausedAt,
 }: {
   runs: AgentRunData[];
   totals: ConsoleTotals | null;
   onReplay: () => void;
   replaying: boolean;
+  // Optional: the console still works without the graph, so an older API or a
+  // missing langgraph install degrades to the list rather than a blank screen.
+  graph?: PipelineGraphData | null;
+  pausedAt?: number | null;
 }) {
   if (runs.length === 0) {
     return (
@@ -47,6 +54,13 @@ export function AgentConsole({
   }
   return (
     <div className="mx-auto max-w-3xl p-6">
+      {graph && (
+        <PipelineGraph
+          data={graph}
+          ranAgents={new Set(runs.map((run) => run.agent))}
+          pausedAt={pausedAt ?? null}
+        />
+      )}
       <div className="mb-4 flex items-center gap-3">
         <span
           data-testid="totals-line"

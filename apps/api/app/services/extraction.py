@@ -7,7 +7,11 @@ import logging
 import re
 import uuid
 
-from sqlalchemy import delete, select
+import httpx
+
+from app.core.config import get_settings
+
+from sqlalchemy import delete, func, select
 
 from bidproof_extractor import (
     CandidateRule,
@@ -69,9 +73,29 @@ async def _call_model(
             if u.get("cost") is not None:
                 usage["cost_usd"] = usage.get("cost_usd", 0.0) + float(u["cost"])
         return response["choices"][0]["message"]["content"]
+    except httpx.TimeoutException as exc:
+        # Worth separating from an outage: the gateway was reachable and the
+        # model was working, we just stopped waiting. Reporting it as
+        # "unavailable" sent someone looking at the wrong thing for an hour.
+        logger.warning(
+            "extractor model call timed out after %ss: %s — raise "
+            "LLM_TIMEOUT_SECONDS if this repeats",
+            get_settings().llm_timeout_seconds, exc,
+        )
+        return None
     except Exception as exc:
         logger.warning("extractor model call failed: %s", exc)
         return None
+
+
+def _should_replace_rules(new_rule_count: int, existing_rule_count: int) -> bool:
+    """Whether a fresh extraction may replace what is already stored.
+
+    Replacing is a delete followed by an insert, so an empty result over a
+    document that already has rules destroys them. The only case worth
+    refusing is exactly that one: nothing new, something already there.
+    """
+    return not (new_rule_count == 0 and existing_rule_count > 0)
 
 
 async def _ai_extract(
@@ -147,7 +171,6 @@ async def extract_rules(
 ) -> dict | None:
     import time
 
-    from app.core.config import get_settings
     from app.observability import record_agent_run
 
     started = time.monotonic()
@@ -181,6 +204,35 @@ async def extract_rules(
     merged, discarded, ai_note = await build_candidate_rules(refs, gateway, usage)
 
     async with org_scoped_session(org_id) as session:
+        existing = (
+            await session.execute(
+                select(func.count())
+                .select_from(Rule)
+                .where(Rule.document_id == document.id)
+            )
+        ).scalar() or 0
+
+        if not _should_replace_rules(len(merged), existing):
+            # A model outage is not evidence that the document has no rules.
+            # Replacing here would delete a good set and report "0 rules" as
+            # though the tender were empty — an unrecoverable loss caused by a
+            # transient failure.
+            logger.warning(
+                "extraction produced no rules for tender %s but %d already "
+                "exist; keeping them",
+                tender_id, existing,
+            )
+            return {
+                "rules": existing,
+                "discarded_uncited": discarded,
+                "note": (
+                    f"{ai_note or 'extraction produced nothing'} — kept the "
+                    f"{existing} rules already extracted rather than deleting "
+                    "them; re-run when the model is reachable"
+                ),
+                "kept_existing": True,
+            }
+
         await session.execute(delete(Rule).where(Rule.document_id == document.id))
         for rule in merged:
             session.add(

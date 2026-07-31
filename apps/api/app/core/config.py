@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     llm_cost_per_1k_tokens_inr: float = 0.0
     # USD→INR for converting the gateway's reported per-call cost to rupees.
     usd_to_inr: float = 83.0
+    # How many model calls may be in flight at once when a stage fans out over
+    # independent items (the cited judge over prose rules). Sized for the
+    # slowest constraint, which is usually the provider's per-minute rate limit
+    # rather than our own capacity — raise it for a self-hosted model.
+    llm_max_concurrency: int = 6
+    # Seconds to wait on one gateway call. Extraction sends the largest prompt
+    # in the product (24k characters of tender text) and a self-hosted or
+    # free-tier open-weight model can take a minute or two to answer it. This
+    # was hardcoded at 120s, which sat right on top of the real response time:
+    # a run that took 80s once took 121s the next time and was recorded as
+    # "model unavailable".
+    llm_timeout_seconds: int = 300
+
+    # Run checking through the Conductor graph instead of the sequential
+    # service call. Both execute the same functions, so this is an
+    # orchestration switch, not a behaviour switch — and flipping it back is
+    # one environment variable if the graph misbehaves during a demo.
+    conductor_enabled: bool = True
 
     # Object store (raw tender files).
     minio_endpoint: str = "localhost:9000"
@@ -80,9 +98,47 @@ class Settings(BaseSettings):
     risk_pbg_max_percent: float = 5.0
     risk_emd_max_percent_of_value: float = 2.0
 
-    # Scout (US-01). The allow-list is the ONLY set of hosts the Scout can
-    # reach — SSRF guard (SPEC §10, §11.4). Comma-separated domains.
-    scout_allowed_domains: str = "gem.gov.in,eprocure.gov.in"
+    # Scout (US-01). The ONLY hosts the Scout may reach (SSRF guard, SPEC §10/§11.4). Adding a
+    # portal means adding it here AND to `nic_portals` below — an adapter can
+    # never widen this for itself.
+    scout_allowed_domains: str = (
+        "gem.gov.in,eprocure.gov.in,"
+        # NIC eProcurement instances, one per public buyer.
+        "iocletenders.nic.in,eprocurentpc.nic.in,coalindiatenders.nic.in,"
+        "tenders.ongc.co.in,cewacor.nic.in,"
+        # Buyers publishing a plain HTML tender table.
+        "www.pnbindia.in"
+    )
+
+    # NIC eProcurement portals to discover from, as "name:host" pairs. They all
+    # run the same platform, so each is configuration rather than code — see
+    # adapters/bidproof_adapters/niceproc/adapter.py.
+    #
+    # Deliberately NOT here:
+    #   * IREPS (ireps.gov.in) — its robots.txt is "User-agent: * / Disallow: /",
+    #     so the whole site is off-limits to automation. Verified 2026-07-30.
+    #   * Bank portals (Bank of Baroda, PNB) — their tender pages render with
+    #     JavaScript and are not NIC instances, so they need their own adapter.
+    #     Bank of Baroda additionally disallows every PDF.
+    nic_portals: str = (
+        "iocl:iocletenders.nic.in,"
+        "ntpc:eprocurentpc.nic.in,"
+        "coalindia:coalindiatenders.nic.in"
+    )
+    # Off by default: these yield listing metadata only (the detail page is
+    # captcha-gated, like CPPP), and each one is a browser render per cycle.
+    nic_portals_enabled: bool = False
+
+    # Buyers that publish an ordinary HTML tender table (adapters/htmlportal).
+    # Both render with JavaScript, so each costs one browser render per cycle.
+    #   cwc — Central Warehousing Corporation. Warehouses mean racking: the
+    #         closest category match Godrej has. Durable per-tender links.
+    #   pnb — Punjab National Bank. Banks buy safes, vaults and lockers, the
+    #         Security Solutions category, which had no source at all.
+    # Documents are never fetched: Bank of Baroda's robots.txt disallows every
+    # PDF, so this family lists and links out, exactly as CPPP does.
+    html_portals: str = "cwc,pnb"
+    html_portals_enabled: bool = False
     scout_enabled: bool = False
     scout_interval_minutes: int = 60  # AC: new tenders within 4 hours
     gem_bids_url: str = "https://bidplus.gem.gov.in/all-bids"

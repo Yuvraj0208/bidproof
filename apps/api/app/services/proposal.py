@@ -27,6 +27,7 @@ from bidproof_proposalwriter import (
 from app.core.db import org_scoped_session
 from app.llm.gateway import LLMGateway, extract_text
 from app.models import (
+    AuditLog,
     CatalogueProduct,
     CompanyFact,
     Decision,
@@ -57,6 +58,37 @@ _SCAFFOLD_RE = re.compile(
     r"</?(?:draft|facts|requirements|style_reference|section)\b[^>]*>",
     re.IGNORECASE,
 )
+
+
+# Source tags — [F:xxxxxxxx] for a company fact, [P:xxxxxxxx] for a product —
+# are the proof chain for prose. The FactChecker parses them and every claim's
+# `source_tag` comes from them, so they MUST stay in the stored content.
+#
+# They must equally never reach a reader. A tender proposal handed to a buyer
+# with "[F:f86aed8e]" in the middle of a sentence looks broken, and a bid can be
+# rejected on presentation alone. So they are stripped at the moment of
+# rendering, not at the moment of writing.
+_SOURCE_TAG_RE = re.compile(r"\s*\[(?:F|P):[0-9a-f]{6,12}\]", re.IGNORECASE)
+
+
+def render_for_reader(text: str) -> str:
+    """The section as a human should see it: same prose, no internal tags.
+
+    Removing a tag leaves debris — " ," where a tag preceded a comma, a run of
+    twelve product tags collapsing into a gap, a space before a full stop. Those
+    are tidied here so the sentence reads as though it were written that way.
+    """
+    if not text:
+        return ""
+    cleaned = _SOURCE_TAG_RE.sub("", text)
+    # The tag sat before the punctuation it belonged to:
+    #   "certification , ISO" -> "certification, ISO"
+    cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
+    # Collapse the horizontal gap a removed run of tags left behind, without
+    # touching the newlines that separate paragraphs.
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    return cleaned.strip()
 
 
 def strip_scaffolding(text: str) -> str:
@@ -297,8 +329,123 @@ OPEN_FLAG_STATUSES = {"contradicted", "cannot_verify"}
 
 def open_flags(claims: list[dict]) -> list[str]:
     """A section cannot be approved while any claim is contradicted or
-    unverifiable — those are the flags a human must resolve first."""
-    return [c["status"] for c in claims if c["status"] in OPEN_FLAG_STATUSES]
+    unverifiable — those are the flags a human must resolve first.
+
+    A claim carrying a `resolution` has been dealt with by a named person and
+    no longer blocks. Until `resolve_claim` existed this was a dead end: the
+    approve button said "resolve open flags first" and nothing in the product
+    could resolve one.
+    """
+    return [
+        c["status"]
+        for c in claims
+        if c["status"] in OPEN_FLAG_STATUSES and not c.get("resolution")
+    ]
+
+
+# What a person may do with a flagged claim. Both are decisions, and both are
+# recorded — the point of a checkpoint is that someone's name is against it.
+RESOLUTIONS = {
+    # The sentence goes. The writer claimed more than the company can show,
+    # and the safest correction is for it not to be in the proposal.
+    "drop",
+    # The sentence stays, vouched for by a named person with a reason. Used
+    # when the claim is true but the capability database cannot prove it —
+    # a gap in our data, not a false statement.
+    "accept",
+}
+
+
+def validate_resolution(action: str, by: str, reason: str) -> str | None:
+    """Why a resolution would be refused, or None if it is well-formed.
+
+    Separate from the database work so the rules can be read — and tested —
+    without one. Dropping needs no justification because removing an unproven
+    sentence is the safe direction; keeping one does.
+    """
+    if action not in RESOLUTIONS:
+        return f"unknown action {action!r} — expected drop or accept"
+    if len(by.strip()) < 2:
+        return "a name is required — a resolution is attributable"
+    if action == "accept" and len(reason.strip()) < 10:
+        return (
+            "accepting a flagged claim needs a written reason — it is on the "
+            "record that a person vouched for it"
+        )
+    return None
+
+
+async def resolve_claim(
+    org_id: uuid.UUID,
+    tender_id: uuid.UUID,
+    section_id: uuid.UUID,
+    claim_index: int,
+    action: str,
+    by: str,
+    reason: str,
+) -> tuple[dict | None, str | None]:
+    """Resolve one flagged claim, so its section can be approved.
+
+    This is the missing half of Checkpoint 5. SPEC §7 requires a human to
+    "resolve every flag", and the export blocker refuses while a claim is
+    contradicted — but there was no way to act on one, so a flagged section
+    could never be approved or exported except by overriding the whole export.
+    """
+    refusal = validate_resolution(action, by, reason)
+    if refusal is not None:
+        return None, refusal
+
+    async with org_scoped_session(org_id) as session:
+        section = await session.get(ProposalSection, section_id)
+        if section is None or section.org_id != org_id:
+            return None, None
+        claims = list(section.claims or [])
+        if not 0 <= claim_index < len(claims):
+            return None, f"no claim at index {claim_index}"
+
+        claim = dict(claims[claim_index])
+        if claim["status"] not in OPEN_FLAG_STATUSES:
+            return None, "that claim is not flagged"
+
+        claim["resolution"] = action
+        claim["resolved_by"] = by.strip()
+        claim["resolved_reason"] = reason.strip()
+        claim["resolved_at"] = datetime.now(timezone.utc).isoformat()
+        claims[claim_index] = claim
+
+        if action == "drop":
+            # Remove the sentence itself, not just the badge. Leaving the prose
+            # in place while marking the claim resolved would export a sentence
+            # the company cannot support.
+            section.content = _remove_sentence(section.content, claim["text"])
+
+        section.claims = claims
+        # Approval is a separate, deliberate act: resolving the last flag
+        # unblocks the button, it does not press it.
+        session.add(AuditLog(
+            org_id=org_id, tender_id=tender_id, actor=by.strip(),
+            action=f"proposal_claim_{action}",
+            details={
+                "section": section.section_tag,
+                "claim": claim["text"][:300],
+                "status": claim["status"],
+                "reason": reason.strip(),
+            },
+        ))
+        await session.flush()
+        return _section_dict(section), None
+
+
+def _remove_sentence(content: str, sentence: str) -> str:
+    """Take one sentence out of a section, leaving the rest readable."""
+    if not content or not sentence:
+        return content or ""
+    out = content.replace(sentence.strip(), "")
+    # Dropping a sentence mid-paragraph leaves a double space, and dropping the
+    # only sentence of a paragraph leaves a blank line.
+    out = re.sub(r"[ \t]{2,}", " ", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
 
 
 async def _load_writer_context(org_id: uuid.UUID, tender_id: uuid.UUID):

@@ -14,6 +14,14 @@ dependencies = [
 # per their platform instructions. The adapter lazy-imports it.
 ml = [
     "docling>=2.15",
+    # Step 2 of the ladder. Undeclared until now, which meant a plain
+    # `uv sync` silently pruned it and every scanned page fell through to
+    # "flagged for a human" — with nothing in the logs to say why.
+    "rapidocr>=3.0",
+    "onnxruntime>=1.17",
+    # The OCR evaluator renders known text to a page image and reads it back,
+    # so ground truth is exact. Belongs with the OCR engine it measures.
+    "reportlab>=4",
 ]
 
 [build-system]

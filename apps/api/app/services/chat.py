@@ -132,7 +132,20 @@ async def ask(
         # context to reason over, and every one of them is citable.
         top = [el for _, el in scored[:6]]
 
-        # 3. Nothing relevant in this tender → hard refusal (scope = security).
+        # A BROAD question is not an out-of-scope question. "What is this
+        # tender?" is every user's first question, and it reduces to nothing
+        # searchable because "what", "this" and "tender" are all stopwords — so
+        # it matched no element and was hard-refused with "I can only discuss the
+        # tenders in this workspace", which is both wrong and insulting.
+        #
+        # Refusal must mean "you asked about something else", not "you asked
+        # broadly". With no distinctive terms to match, answer from the opening
+        # of the document, which is where a tender states what it is.
+        if not top and not wanted and elements:
+            top = list(elements[:6])
+
+        # 3. The question named things, and none of them are in this tender →
+        #    hard refusal (scope is a security boundary, not a preference).
         if not top:
             await _log(session, org_id, tender_id, "assistant", OUT_OF_SCOPE,
                        refused=True, reason="out_of_scope")

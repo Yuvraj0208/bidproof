@@ -12,6 +12,7 @@ import KitchenSink from "./KitchenSink";
 import Landing from "./screens/Landing";
 import NewCompany from "./screens/NewCompany";
 import Analytics from "./screens/Analytics";
+import Evaluation from "./screens/Evaluation";
 import Admin from "./screens/Admin";
 import { Workspace } from "./Workspace";
 import { ModelLab } from "./components/ModelLab";
@@ -120,6 +121,7 @@ function Signed({
         <Route path="/console" element={<Navigate to="/workspace" replace />} />
         <Route path="/model-lab" element={<LabRoute />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/evaluation" element={<Evaluation />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/kitchen-sink" element={<KitchenSink />} />
         <Route path="*" element={<Navigate to="/app" replace />} />

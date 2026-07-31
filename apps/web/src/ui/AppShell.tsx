@@ -31,6 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: "/console", label: "Agent Console", glyph: "◷", needsTender: true },
   { to: "/model-lab", label: "Model Lab", glyph: "⚖" },
   { to: "/analytics", label: "Analytics", glyph: "◭" },
+  { to: "/evaluation", label: "Evaluation", glyph: "✓" },
   { to: "/admin", label: "Admin", glyph: "⚙" },
 ];
 

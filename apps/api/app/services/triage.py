@@ -25,6 +25,30 @@ logger = logging.getLogger(__name__)
 
 RESOLVABLE_LISTS = {"in_our_lane", "opportunity_radar"}
 
+# The only fit-weight keys the scorer reads. Anything else in an org
+# profile is a typo, and must not reach the coverage arithmetic.
+_WEIGHT_KEYS = frozenset(
+    {"category", "eligibility", "value", "location", "win_history"}
+)
+
+
+def _known_weights(weights: dict | None) -> dict[str, float]:
+    """The subset of `weights` the scorer understands, warning about the rest."""
+    if not weights:
+        return {}
+    known, unknown = {}, []
+    for key, value in weights.items():
+        if key in _WEIGHT_KEYS:
+            known[key] = value
+        else:
+            unknown.append(key)
+    if unknown:
+        logger.warning(
+            "org profile has unrecognised fit weights %s — ignoring them; "
+            "valid keys are %s", sorted(unknown), sorted(_WEIGHT_KEYS),
+        )
+    return known
+
 
 def _profile_from_row(row: OrgProfile | None) -> TriageProfile:
     settings = get_settings()
@@ -46,7 +70,12 @@ def _profile_from_row(row: OrgProfile | None) -> TriageProfile:
             Category(c["name"], tuple(c.get("keywords", [])))
             for c in (row.categories or [])
         ),
-        weights={**default_weights, **(row.weights or {})},
+        # Only weights the scorer actually looks up. An unrecognised key used to
+        # be merged in and then counted in `total_weight`, which is the
+        # denominator of `coverage` — so a profile with three misspelled keys
+        # halved every tender's confidence and pinned the whole radar in the
+        # "needs human" queue. Unknown keys are now dropped, loudly.
+        weights={**default_weights, **_known_weights(row.weights)},
         value_band_inr=(band.get("min_inr"), band.get("max_inr")),
         locations=tuple(row.locations or []),
         win_categories=tuple(row.win_categories or []),
