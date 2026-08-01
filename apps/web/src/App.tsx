@@ -337,21 +337,21 @@ export default function App({
           sign-in and it was a white page with a heading on it — accurate, but
           it told you nothing before you started reading. The band answers
           "what have you got, and what needs me?" in one glance. */}
-      <div className="on-void relative mb-6 overflow-hidden rounded-[16px] border border-void-line bg-void px-6 py-5 shadow-glow">
+      <div className="on-void relative mb-6 overflow-hidden rounded-[18px] border border-void-line bg-void px-8 py-8 shadow-glow">
         <div aria-hidden className="pointer-events-none absolute inset-0 void-grid" />
         <div aria-hidden className="pointer-events-none absolute inset-0 void-glow" />
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="eyebrow text-accent">tender radar</p>
-            <h1 className="mt-1.5 text-[clamp(1.4rem,2.6vw,1.9rem)] font-semibold tracking-[-0.02em] text-white">
+            <h1 className="mt-2 text-[clamp(1.8rem,3.4vw,2.6rem)] font-semibold leading-[1.05] tracking-[-0.03em] text-white">
               Tenders in your lane
             </h1>
-            <p className="mt-1 max-w-md text-sm text-white/50">
+            <p className="mt-2 max-w-md text-[15px] text-white/50">
               And the ones you could win but never bid on.
             </p>
           </div>
 
-          <dl className="flex flex-wrap gap-7">
+          <dl className="flex flex-wrap gap-9">
             {[
               { k: "in this list", v: counts.total },
               { k: "closing in 7 days", v: counts.closingSoon, warn: counts.closingSoon > 0 },
@@ -360,13 +360,13 @@ export default function App({
               <div key={stat.k}>
                 <dd
                   data-numeric
-                  className={`text-[1.75rem] font-semibold leading-none tracking-[-0.03em] ${
+                  className={`text-[2.25rem] font-semibold leading-none tracking-[-0.035em] ${
                     stat.warn ? "text-warning" : "text-white"
                   }`}
                 >
                   {stat.v}
                 </dd>
-                <dt className="mt-1 text-[11px] text-white/45">{stat.k}</dt>
+                <dt className="mt-1.5 text-[11px] text-white/45">{stat.k}</dt>
               </div>
             ))}
           </dl>

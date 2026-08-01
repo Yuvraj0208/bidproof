@@ -350,7 +350,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
         </header>
 
         {/* --------------------------------------------------------- hero */}
-        <section className="mx-auto grid min-h-[86vh] max-w-6xl items-center gap-14 px-6 pb-24 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14">
+        <section className="mx-auto grid min-h-[78vh] max-w-6xl items-center gap-14 px-6 pb-24 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14">
           <div>
             <motion.p
               initial={{ opacity: 0, y: 10 }}
@@ -366,12 +366,12 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.65, ease }}
-              className="text-[clamp(2.9rem,7.4vw,5.6rem)] font-semibold leading-[0.98] tracking-[-0.035em]"
+              className="max-w-[15ch] text-[clamp(2.6rem,5.6vw,4.4rem)] font-semibold leading-[0.98] tracking-[-0.035em]"
             >
-              One bid in three is
-              <br />
-              thrown out on
-              <br />
+              {/* No hard breaks. They were tuned for a 64px headline and at
+                  90px they produced four ragged lines; a max-width lets the
+                  type set itself at whatever size the viewport gives it. */}
+              One bid in three is thrown out on{" "}
               <span className="relative inline-block">
                 paperwork.
                 <motion.span
@@ -380,7 +380,9 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
                   animate={{ scaleX: 1 }}
                   transition={{ delay: 0.8, duration: 0.6, ease }}
                   style={{ originX: 0 }}
-                  className="absolute -bottom-1 left-0 h-[3px] w-full rounded bg-warning"
+                  // Sits on the baseline rather than floating below it: at this
+                  // size -bottom-1 left a visible gap under the word.
+                  className="absolute bottom-[0.08em] left-0 h-[0.055em] w-full rounded bg-warning"
                 />
               </span>
             </motion.h1>
@@ -389,7 +391,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.6, ease }}
-              className="mt-7 max-w-xl text-[19px] leading-relaxed text-white/65"
+              className="mt-6 max-w-xl text-[17px] leading-relaxed text-white/65"
             >
               BidProof finds the tenders you should bid on, reads all 800 pages,
               checks every rule against what your company actually has, and tells
@@ -401,7 +403,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.6, ease }}
-              className="mt-9 flex flex-wrap items-center gap-3"
+              className="mt-8 flex flex-wrap items-center gap-3"
             >
               <button
                 onClick={() => setShowSignIn(true)}
