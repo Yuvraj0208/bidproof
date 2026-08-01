@@ -9,6 +9,7 @@ import { ConfidenceChip } from "./ConfidenceChip";
 import type { Highlight } from "./PdfProof";
 import { DataTable, type Column } from "../ui/DataTable";
 import { VerdictBadge } from "../ui/chips";
+import { Crosshair } from "lucide-react";
 import { Button, EmptyState } from "../ui/primitives";
 
 export interface VerdictRow {
@@ -78,8 +79,15 @@ export function MatrixTable({
           <div className="mt-0.5 line-clamp-2 text-sm text-ink">
             {row.requirement_text}
           </div>
-          <div className="mt-1 text-[11px] text-ink-subtle">
-            {row.family} · p.{row.page_no} · proof ↗
+          {/* Click-to-proof is the product's whole claim (SPEC §18 never-cut),
+              so the row has to LOOK clickable. "proof ↗" in grey was a label;
+              this is an affordance that brightens with the row. */}
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-ink-subtle transition-colors duration-150 group-hover:text-indigo">
+            {row.family} · p.{row.page_no}
+            <span className="ml-0.5 inline-flex items-center gap-0.5 font-medium">
+              <Crosshair size={11} strokeWidth={2} aria-hidden />
+              proof
+            </span>
           </div>
         </div>
       ),

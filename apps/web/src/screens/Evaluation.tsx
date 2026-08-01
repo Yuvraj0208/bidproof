@@ -7,6 +7,7 @@
 // dishonesty this whole subsystem exists to prevent. So every card carries its
 // ground-truth kind, its sample size, and — when it cannot be measured — what
 // would have to be true for it to be.
+import { Stagger } from "../ui/motion";
 import { useEffect, useState } from "react";
 import {
   fetchEvaluationCatalogue,
@@ -14,6 +15,7 @@ import {
   type EvaluationResult,
   type EvaluationMetric,
 } from "../api";
+import { MetricBar } from "../ui/charts";
 import { Button, Card, EmptyState, FieldLabel, SkeletonLoader } from "../ui/primitives";
 import { Pill } from "../ui/chips";
 import { useToast } from "../ui/overlays";
@@ -64,11 +66,23 @@ function MetricRow({ metric }: { metric: EvaluationMetric }) {
           <div className="text-[11px] text-ink-subtle">{metric.detail}</div>
         )}
       </div>
-      <div className="shrink-0 text-right">
+      <div className="w-32 shrink-0 text-right">
         <span data-numeric className="text-sm font-semibold text-ink">
           {shown}
         </span>
-        <div className="text-[11px] text-ink-subtle">
+        {/* A ratio gets a bar as well as a figure: the number is the claim, the
+            bar is how far from 1.0 it sits. Counts and durations get no bar,
+            because there is nothing to be a fraction OF. */}
+        {pct && (
+          <div className="mt-1">
+            <MetricBar
+              value={metric.value}
+              higherIsBetter={metric.higher_is_better}
+              label={metric.label}
+            />
+          </div>
+        )}
+        <div className="mt-1 text-[11px] text-ink-subtle">
           {metric.sample_size !== null ? `n=${metric.sample_size}` : ""}
           {!metric.higher_is_better && metric.value !== null ? " · lower is better" : ""}
         </div>
@@ -211,11 +225,11 @@ export default function Evaluation() {
       {!busy && results !== null && (
         <>
           <FieldLabel>Results</FieldLabel>
-          <div className="mt-2">
+          <Stagger className="mt-2">
             {results.map((r) => (
               <ResultCard key={r.component} result={r} />
             ))}
-          </div>
+          </Stagger>
         </>
       )}
     </div>

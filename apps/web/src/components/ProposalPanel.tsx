@@ -7,6 +7,9 @@
 // step to clear rather than a wall. Approval is still recorded against each
 // section individually, and skipped sections are named back rather than
 // quietly left out.
+import { PenLine } from "lucide-react";
+import { Stagger } from "../ui/motion";
+import { EmptyState } from "../ui/primitives";
 import { useState } from "react";
 import type { Proposal, ProposalClaim, ProposalSection } from "../api";
 
@@ -208,10 +211,11 @@ export function ProposalPanel({
       </div>
 
       {!proposal && (
-        <p className="text-sm text-ink-muted">
-          No draft yet. A proposal can be drafted once the decision is GO — every
-          factual sentence is grounded in your capability database.
-        </p>
+        <EmptyState
+          icon={<PenLine size={40} strokeWidth={1.25} className="text-ink-subtle" />}
+          title="No draft yet"
+          body="A proposal can be drafted once the decision is GO. Every factual sentence is tagged to your own capability data and fact-checked — anything that cannot be grounded is dropped rather than written."
+        />
       )}
 
       {proposal && (
@@ -254,7 +258,8 @@ export function ProposalPanel({
         </div>
       )}
 
-      {proposal?.sections.map((section) => (
+      <Stagger className="space-y-4">
+        {(proposal?.sections ?? []).map((section) => (
         <article
           key={section.id}
           data-testid="proposal-section"
@@ -322,9 +327,13 @@ export function ProposalPanel({
           )}
           {/* The reader-facing prose. The tagged original stays in
               `section.content`, and the claims below carry the provenance. */}
+          {/* `<pre>` defaults to monospace, so the letter that goes to the
+              buyer was being shown as though it were code. It still needs
+              `whitespace-pre-wrap` to keep the paragraph breaks the writer
+              produced — but it should read like the document it is. */}
           <pre
             data-testid="section-prose"
-            className="whitespace-pre-wrap rounded-[8px] bg-surface p-3 text-xs text-ink"
+            className="whitespace-pre-wrap rounded-[8px] bg-surface p-4 font-sans text-[13px] leading-relaxed text-ink"
           >
             {section.content_display ?? section.content}
           </pre>
@@ -372,7 +381,8 @@ export function ProposalPanel({
             </ul>
           )}
         </article>
-      ))}
+        ))}
+      </Stagger>
     </div>
   );
 }

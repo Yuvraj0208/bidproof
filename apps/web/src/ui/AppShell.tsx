@@ -5,7 +5,21 @@
 // role, and a light content well. The rail is the thing that makes this read as
 // one product rather than a set of pages.
 import { NavLink } from "react-router-dom";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+import {
+  Activity,
+  BadgeCheck,
+  ChartLine,
+  IndianRupee,
+  LayoutPanelLeft,
+  LogOut,
+  PenLine,
+  Radar,
+  Scale,
+  Search,
+  Settings,
+  Table2,
+} from "lucide-react";
 import type { OrgSummary } from "../api";
 import { CountdownChip } from "./chips";
 import { ModeBadge } from "./ModeBadge";
@@ -14,7 +28,11 @@ import { OrgBadge } from "./OrgBadge";
 export interface NavItem {
   to: string;
   label: string;
-  glyph: string;
+  /** A drawn icon. These were Unicode glyphs (◎ ◫ ▤ ₹ ✎) — legible, but they
+   *  inherit the text baseline and the font's own metrics, so they never
+   *  aligned and never looked deliberate. lucide is the icon set shadcn/ui
+   *  ships with, which CLAUDE.md already names in the stack. */
+  Icon: ComponentType<{ size?: number | string; className?: string; strokeWidth?: number }>;
   /** Screens that need a tender in context are disabled without one. */
   needsTender?: boolean;
 }
@@ -23,16 +41,16 @@ export interface NavItem {
 // adding a company happens on the public landing page, before you have a
 // workspace to be inside.
 export const NAV_ITEMS: NavItem[] = [
-  { to: "/app", label: "Tender Radar", glyph: "◎" },
-  { to: "/workspace", label: "Workspace", glyph: "◫", needsTender: true },
-  { to: "/matrix", label: "Compliance Matrix", glyph: "▤", needsTender: true },
-  { to: "/decision", label: "Decision Room", glyph: "₹", needsTender: true },
-  { to: "/proposal", label: "Proposal Studio", glyph: "✎", needsTender: true },
-  { to: "/console", label: "Agent Console", glyph: "◷", needsTender: true },
-  { to: "/model-lab", label: "Model Lab", glyph: "⚖" },
-  { to: "/analytics", label: "Analytics", glyph: "◭" },
-  { to: "/evaluation", label: "Evaluation", glyph: "✓" },
-  { to: "/admin", label: "Admin", glyph: "⚙" },
+  { to: "/app", label: "Tender Radar", Icon: Radar },
+  { to: "/workspace", label: "Workspace", Icon: LayoutPanelLeft, needsTender: true },
+  { to: "/matrix", label: "Compliance Matrix", Icon: Table2, needsTender: true },
+  { to: "/decision", label: "Decision Room", Icon: IndianRupee, needsTender: true },
+  { to: "/proposal", label: "Proposal Studio", Icon: PenLine, needsTender: true },
+  { to: "/console", label: "Agent Console", Icon: Activity, needsTender: true },
+  { to: "/model-lab", label: "Model Lab", Icon: Scale },
+  { to: "/analytics", label: "Analytics", Icon: ChartLine },
+  { to: "/evaluation", label: "Evaluation", Icon: BadgeCheck },
+  { to: "/admin", label: "Admin", Icon: Settings },
 ];
 
 export function AppShell({
@@ -55,11 +73,14 @@ export function AppShell({
 }) {
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
-      {/* Rail */}
-      <aside className="on-indigo flex w-60 shrink-0 flex-col bg-indigo text-white">
-        <div className="flex items-center gap-2.5 px-5 py-4">
+      {/* Rail. Below md it collapses to icons: at 375px a 240px rail leaves
+          135px of content, which is not a narrow layout, it is a broken one.
+          Icons-only keeps every destination reachable without a drawer and
+          without any open/closed state to get wrong. */}
+      <aside className="on-indigo flex w-14 shrink-0 flex-col bg-indigo text-white md:w-60">
+        <div className="flex items-center gap-2.5 px-3 py-4 md:px-5">
           <OrgBadge org={org} size={30} onDark />
-          <div className="min-w-0">
+          <div className="hidden min-w-0 md:block">
             <div className="truncate text-sm font-semibold tracking-[-0.01em]"
                  title={org.name}>
               {org.name}
@@ -71,16 +92,20 @@ export function AppShell({
         <nav className="flex-1 overflow-y-auto px-2 py-2">
           {NAV_ITEMS.map((item) => {
             const locked = item.needsTender && !tenderTitle;
+            const Icon = item.Icon;
             if (locked) {
               return (
                 <span
                   key={item.to}
                   aria-disabled="true"
-                  title="Open a tender first"
-                  className="mb-0.5 flex cursor-not-allowed items-center gap-2.5 rounded-[8px] px-3 py-2 text-sm text-white/30"
+                  title={`${item.label} — open a tender first`}
+                  // white/25 was so faint the five locked screens read as a
+                  // rendering fault rather than as "open a tender first".
+                  // white/40 is legibly present but clearly not available.
+                  className="mb-0.5 flex cursor-not-allowed items-center justify-center gap-2.5 rounded-[8px] px-3 py-2 text-sm text-white/40 md:justify-start"
                 >
-                  <span aria-hidden className="w-4 text-center">{item.glyph}</span>
-                  {item.label}
+                  <Icon size={16} strokeWidth={1.75} className="shrink-0" />
+                  <span className="hidden md:inline">{item.label}</span>
                 </span>
               );
             }
@@ -89,25 +114,45 @@ export function AppShell({
                 key={item.to}
                 to={item.to}
                 end={item.to === "/app"}
+                title={item.label}
                 className={({ isActive }) =>
-                  `mb-0.5 flex items-center gap-2.5 rounded-[8px] px-3 py-2 text-sm transition-colors duration-150 ${
+                  // The active item gets a left marker as well as a fill. On a
+                  // dark rail a background alone is a weak signal at a glance,
+                  // and this is the only "where am I" cue the product has.
+                  `group relative mb-0.5 flex items-center justify-center gap-2.5 rounded-[8px] px-3 py-2 text-sm transition-colors duration-150 md:justify-start ${
                     isActive
                       ? "bg-white/12 font-medium text-white"
-                      : "text-white/70 hover:bg-white/8 hover:text-white"
+                      : "text-white/65 hover:bg-white/8 hover:text-white"
                   }`
                 }
               >
-                <span aria-hidden className="w-4 text-center">{item.glyph}</span>
-                {item.label}
+                {({ isActive }) => (
+                  <>
+                    <span
+                      aria-hidden
+                      className={`absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent transition-opacity duration-150 ${
+                        isActive ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                    <Icon
+                      size={16}
+                      strokeWidth={isActive ? 2 : 1.75}
+                      className="shrink-0"
+                    />
+                    <span className="hidden md:inline">{item.label}</span>
+                  </>
+                )}
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="border-t border-white/10 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <OrgBadge org={org} size={26} onDark />
-            <span className="min-w-0 flex-1 truncate text-xs text-white/80"
+        <div className="border-t border-white/10 px-2 py-3 md:px-4">
+          <div className="flex items-center justify-center gap-2 md:justify-start">
+            <span className="hidden md:block">
+              <OrgBadge org={org} size={26} onDark />
+            </span>
+            <span className="hidden min-w-0 flex-1 truncate text-xs text-white/80 md:block"
                   title={org.name}>
               {org.name}
             </span>
@@ -116,9 +161,10 @@ export function AppShell({
                 data-testid="sign-out"
                 onClick={onSignOut}
                 title="Sign out and choose another company"
-                className="rounded-[8px] px-2 py-1 text-[11px] text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+                aria-label="Sign out"
+                className="rounded-[8px] p-1.5 text-white/50 transition-colors duration-150 hover:bg-white/10 hover:text-white"
               >
-                Sign out
+                <LogOut size={15} strokeWidth={1.75} />
               </button>
             )}
           </div>
@@ -142,12 +188,20 @@ export function AppShell({
           </div>
 
           {onSearch && (
-            <input
-              type="search"
-              placeholder="Search tenders…"
-              onChange={(e) => onSearch(e.target.value)}
-              className="hidden w-56 rounded-[8px] border border-hairline bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-subtle md:block"
-            />
+            <div className="relative hidden md:block">
+              <Search
+                size={14}
+                strokeWidth={1.75}
+                aria-hidden
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-subtle"
+              />
+              <input
+                type="search"
+                placeholder="Search tenders…"
+                onChange={(e) => onSearch(e.target.value)}
+                className="w-56 rounded-[8px] border border-hairline bg-surface py-1.5 pl-8 pr-2.5 text-sm text-ink transition-colors duration-150 placeholder:text-ink-subtle hover:border-ink-subtle/40"
+              />
+            </div>
           )}
           <ModeBadge />
           {right}

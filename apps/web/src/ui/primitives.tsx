@@ -4,6 +4,9 @@
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 
+import { ProofArt } from "./artwork";
+import { Sparkline } from "./charts";
+
 /** Card — the resting surface. Everything on the light background sits here. */
 export function Card({
   children,
@@ -64,12 +67,18 @@ export function StatCallout({
   hint,
   tone = "neutral",
   size = "md",
+  trend,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   tone?: "neutral" | "success" | "warning" | "danger" | "brand";
   size?: "md" | "lg";
+  /** Recent history for this figure. A number alone says where you are; the
+   *  shape beside it says which way you are going, which is usually the
+   *  question being asked. Omitted when there is no history worth showing —
+   *  never invented from a single point. */
+  trend?: number[];
 }) {
   const tones: Record<string, string> = {
     neutral: "text-ink",
@@ -83,13 +92,24 @@ export function StatCallout({
       <div className="text-xs font-medium uppercase tracking-wide text-ink-subtle">
         {label}
       </div>
-      <div
-        data-numeric
-        className={`mt-1 font-semibold tracking-[-0.02em] ${tones[tone]} ${
-          size === "lg" ? "text-3xl" : "text-xl"
-        }`}
-      >
-        {value}
+      <div className="mt-1 flex items-end justify-between gap-3">
+        <div
+          data-numeric
+          className={`font-semibold tracking-[-0.02em] ${tones[tone]} ${
+            size === "lg" ? "text-3xl" : "text-xl"
+          }`}
+        >
+          {value}
+        </div>
+        {trend && trend.length > 1 && (
+          <Sparkline
+            values={trend}
+            width={64}
+            height={22}
+            className={tones[tone]}
+            label={`${label} trend`}
+          />
+        )}
       </div>
       {hint && <div className="mt-1 text-xs text-ink-muted">{hint}</div>}
     </div>
@@ -97,24 +117,35 @@ export function StatCallout({
 }
 
 /** EmptyState — teaches rather than apologises (SPEC §17). Always offers the
- *  action that would fill it. */
+ *  action that would fill it.
+ *
+ *  `icon` accepts a drawing as well as a character. The default is `ProofArt`
+ *  — a tender page with the proof box landing on a clause — because an empty
+ *  screen is the best chance the product gets to explain what it is for. A
+ *  string still works, so the two call sites passing "₹" and "✓" are unchanged.
+ */
 export function EmptyState({
   title,
   body,
   action,
-  icon = "◎",
+  icon,
 }: {
   title: string;
   body: string;
   action?: ReactNode;
-  icon?: string;
+  icon?: ReactNode;
 }) {
   return (
     <div
       data-testid="empty-state"
       className="flex flex-col items-center justify-center rounded-[12px] border border-dashed border-hairline bg-white/60 px-6 py-12 text-center"
     >
-      <div aria-hidden className="mb-3 text-2xl text-ink-subtle">{icon}</div>
+      <div
+        aria-hidden
+        className={`mb-3 text-ink-subtle ${typeof icon === "string" ? "text-2xl" : ""}`}
+      >
+        {icon ?? <ProofArt />}
+      </div>
       <h3 className="text-sm font-semibold text-ink">{title}</h3>
       <p className="mt-1 max-w-md text-sm text-ink-muted">{body}</p>
       {action && <div className="mt-4">{action}</div>}

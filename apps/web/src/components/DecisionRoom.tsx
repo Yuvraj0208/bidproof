@@ -1,8 +1,10 @@
 // The Decision Room (US-06): EV maths term by term in rupees, the hard
 // gate, top risks — and Checkpoint 4: a named human signs off or overrides
 // with a written reason. No approve-all, no auto-pass.
+import { Reveal } from "../ui/motion";
 import { useState } from "react";
 import { ConfidenceChip } from "./ConfidenceChip";
+import { LedgerArt } from "../ui/artwork";
 import { RiskTag } from "../ui/chips";
 import { Card, EmptyState, FieldLabel, StatCallout } from "../ui/primitives";
 
@@ -67,7 +69,7 @@ export function DecisionRoom({
         <EmptyState
           title="No decision yet"
           body="Run the compliance check, then compute the expected value. The maths is shown term by term so it can be argued with."
-          icon="₹"
+          icon={<LedgerArt />}
         />
       </div>
     );
@@ -75,6 +77,7 @@ export function DecisionRoom({
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
+      <Reveal>
       <Card className="border-indigo/15 bg-indigo-tint/40">
         <div className="flex flex-wrap items-center gap-3">
           <span
@@ -91,7 +94,9 @@ export function DecisionRoom({
           <span className="ml-auto text-xs text-ink-subtle">
             {decision.status === "pending_signoff"
               ? "awaiting sign-off (checkpoint 4)"
-              : `${decision.status} by ${decision.signed_off_by}`}
+              : // `signed_off` is a database value; it was reaching the screen
+                // verbatim, underscore and all.
+                `${decision.status.replace(/_/g, " ")} by ${decision.signed_off_by}`}
           </span>
         </div>
         {decision.ev_inr != null && (
@@ -106,6 +111,7 @@ export function DecisionRoom({
           </div>
         )}
       </Card>
+      </Reveal>
 
       {decision.gate_failed.length > 0 && (
         <section className="rounded-[12px] border border-danger/25 bg-danger-tint p-3 text-sm text-danger">
@@ -129,9 +135,21 @@ export function DecisionRoom({
               </tr>
             ))}
             {decision.ev_inr != null && (
-              <tr className="font-semibold">
-                <td className="py-2">Expected value</td>
-                <td data-numeric className="py-2 text-right">{inr(decision.ev_inr)}</td>
+              // The total is the line the whole screen exists to produce, and
+              // it was set in the same weight as the terms above it. It gets a
+              // rule and a size, the way a figure you sign off on should read.
+              <tr className="border-t-2 border-ink/15">
+                <td className="pt-3 text-[15px] font-semibold text-ink">
+                  Expected value
+                </td>
+                <td
+                  data-numeric
+                  className={`pt-3 text-right text-lg font-semibold tracking-[-0.02em] ${
+                    decision.ev_inr >= 0 ? "text-success" : "text-danger"
+                  }`}
+                >
+                  {inr(decision.ev_inr)}
+                </td>
               </tr>
             )}
           </tbody>

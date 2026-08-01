@@ -22,15 +22,24 @@ import {
   uploadTender,
   type RadarCard,
 } from "./api";
+import {
+  Copy,
+  ExternalLink,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Zap,
+} from "lucide-react";
 import { ConfidenceChip } from "./components/ConfidenceChip";
 import { OnboardingWizard } from "./components/OnboardingWizard";
-import { CountdownChip, Pill } from "./ui/chips";
+import { RadarArt } from "./ui/artwork";
+import { CountdownChip, daysUntil, Pill } from "./ui/chips";
+import { Stagger } from "./ui/motion";
 import { Modal, useToast } from "./ui/overlays";
 import {
   Button,
   Card,
   EmptyState,
-  PageHeader,
   SkeletonLoader,
   ReadingIndicator,
 } from "./ui/primitives";
@@ -40,6 +49,44 @@ const TABS = [
   { id: "opportunity_radar", label: "Opportunity radar" },
   { id: "needs_human", label: "Needs human" },
 ] as const;
+
+/** How well this tender matches what the company can actually do.
+ *
+ *  A ring rather than a bar: at this size a ring reads as a score while a bar
+ *  reads as progress, and fit is not something that fills up. The number stays
+ *  in the middle as text so it is readable, announced, and testable.
+ */
+function FitRing({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const r = 15;
+  const circumference = 2 * Math.PI * r;
+  const tone =
+    pct >= 70 ? "stroke-success" : pct >= 40 ? "stroke-indigo" : "stroke-ink-subtle";
+
+  return (
+    <span
+      className="relative shrink-0"
+      title={`Fit ${pct}% — how well this matches your catalogue and past wins`}
+    >
+      <svg width={38} height={38} role="img" aria-label={`fit ${pct} percent`}>
+        <circle cx={19} cy={19} r={r} fill="none" strokeWidth={3} className="stroke-surface" />
+        <circle
+          cx={19} cy={19} r={r} fill="none" strokeWidth={3} strokeLinecap="round"
+          className={tone}
+          strokeDasharray={`${(pct / 100) * circumference} ${circumference}`}
+          transform="rotate(-90 19 19)"
+        />
+        <text
+          x={19} y={19} textAnchor="middle" dy="0.36em"
+          data-numeric
+          className="fill-ink text-[10px] font-semibold"
+        >
+          {pct}
+        </text>
+      </svg>
+    </span>
+  );
+}
 
 export default function App({
   onOpenTender,
@@ -88,6 +135,21 @@ export default function App({
   const reading = cards.some(
     (c) => c.parse_status === "pending" || c.parse_status === "running",
   );
+
+  // The header band's figures. Every one is derived from the tenders actually
+  // loaded — `fetchRadar` returns one list at a time, so this counts THIS list
+  // and says so. Inventing a radar-wide total here would need a second request
+  // and would be a number nobody could check against what is on screen.
+  const counts = {
+    total: cards.length,
+    closingSoon: cards.filter((c) => {
+      const days = daysUntil(c.closing_at);
+      return days !== null && days <= 7;
+    }).length,
+    reading: cards.filter(
+      (c) => c.parse_status === "pending" || c.parse_status === "running",
+    ).length,
+  };
   useEffect(() => {
     if (!reading) return;
     const timer = setInterval(() => setRefresh((n) => n + 1), 4000);
@@ -271,11 +333,50 @@ export default function App({
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
-      <PageHeader
-        title="Tender Radar"
-        subtitle="Tenders in your lane, and the ones you could win but never bid on."
-        actions={
-          <>
+      {/* The Radar opens on the dark register. This is the first screen after
+          sign-in and it was a white page with a heading on it — accurate, but
+          it told you nothing before you started reading. The band answers
+          "what have you got, and what needs me?" in one glance. */}
+      <div className="on-void relative mb-6 overflow-hidden rounded-[16px] border border-void-line bg-void px-6 py-5 shadow-glow">
+        <div aria-hidden className="pointer-events-none absolute inset-0 void-grid" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 void-glow" />
+        <div className="relative flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <p className="eyebrow text-accent">tender radar</p>
+            <h1 className="mt-1.5 text-[clamp(1.4rem,2.6vw,1.9rem)] font-semibold tracking-[-0.02em] text-white">
+              Tenders in your lane
+            </h1>
+            <p className="mt-1 max-w-md text-sm text-white/50">
+              And the ones you could win but never bid on.
+            </p>
+          </div>
+
+          <dl className="flex flex-wrap gap-7">
+            {[
+              { k: "in this list", v: counts.total },
+              { k: "closing in 7 days", v: counts.closingSoon, warn: counts.closingSoon > 0 },
+              { k: "still being read", v: counts.reading },
+            ].map((stat) => (
+              <div key={stat.k}>
+                <dd
+                  data-numeric
+                  className={`text-[1.75rem] font-semibold leading-none tracking-[-0.03em] ${
+                    stat.warn ? "text-warning" : "text-white"
+                  }`}
+                >
+                  {stat.v}
+                </dd>
+                <dt className="mt-1 text-[11px] text-white/45">{stat.k}</dt>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+
+      {/* Actions sit with the tab bar now: the dark band above carries the
+          title, so a second heading here would just repeat it. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-hairline pb-3">
+        <>
             <input
               ref={fileInput}
               type="file"
@@ -288,18 +389,24 @@ export default function App({
               }}
             />
             <Button onClick={onScrape} disabled={!org || busy !== null}>
-              ⟳ Scrape now
+              <RefreshCw
+                size={14}
+                strokeWidth={2}
+                aria-hidden
+                className={busy === "scrape" ? "animate-spin" : ""}
+              />
+              Scrape now
             </Button>
             <Button
               variant="primary"
               onClick={() => fileInput.current?.click()}
               disabled={!org || busy !== null}
             >
-              ↑ Upload tender
+              <Upload size={14} strokeWidth={2} aria-hidden />
+              Upload tender
             </Button>
           </>
-        }
-      />
+      </div>
 
       {busy && (
         <Card className="mb-4 border-indigo/20 bg-indigo-tint">
@@ -307,15 +414,19 @@ export default function App({
         </Card>
       )}
 
-      <nav className="mb-4 flex gap-1 border-b border-hairline">
+      {/* A segmented control rather than an underline. These three lists are
+          peers you switch between, not a hierarchy you drill into, and the
+          filled pill says which one you are in from across the room. */}
+      <nav className="mb-4 inline-flex gap-1 rounded-[10px] border border-hairline bg-white p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors duration-150 ${
+            aria-current={tab === t.id ? "page" : undefined}
+            className={`rounded-[7px] px-3 py-1.5 text-sm transition-colors duration-150 ${
               tab === t.id
-                ? "border-indigo font-medium text-indigo"
-                : "border-transparent text-ink-muted hover:text-ink"
+                ? "bg-indigo font-medium text-white shadow-card"
+                : "text-ink-muted hover:bg-indigo-tint hover:text-indigo"
             }`}
           >
             {t.label}
@@ -351,13 +462,18 @@ export default function App({
 
       {org && !loading && !error && cards.length === 0 && (
         <EmptyState
+          icon={<RadarArt />}
           title="No tenders in this list yet"
           body="Scrape the connected portals to discover live tenders, or upload a tender PDF to read it right now."
           action={
             <div className="flex gap-2">
-              <Button onClick={onScrape}>⟳ Scrape now</Button>
+              <Button onClick={onScrape}>
+                <RefreshCw size={14} strokeWidth={2} aria-hidden />
+                Scrape now
+              </Button>
               <Button variant="primary" onClick={() => fileInput.current?.click()}>
-                ↑ Upload tender
+                <Upload size={14} strokeWidth={2} aria-hidden />
+                Upload tender
               </Button>
             </div>
           }
@@ -446,7 +562,8 @@ export default function App({
                 disabled={busy !== null}
                 onClick={() => setConfirmBulk(true)}
               >
-                {busy === "bulk" ? "Deleting…" : `🗑 Delete ${selected.size}`}
+                <Trash2 size={13} strokeWidth={2} aria-hidden />
+                {busy === "bulk" ? "Deleting…" : `Delete ${selected.size}`}
               </Button>
             </>
           ) : (
@@ -457,24 +574,32 @@ export default function App({
         </div>
       )}
 
-      <div className="space-y-3">
-        {!loading &&
-          cards.map((card) => (
+      {/* The list arrives staggered rather than all at once. `Stagger` caps the
+          cascade at half a second, so a long radar still settles promptly. */}
+      <Stagger className="space-y-3">
+        {(loading ? [] : cards).map((card) => (
             <Card key={card.tender_id} as="article" className="transition-shadow duration-150 hover:shadow-overlay">
               <div data-testid="radar-card">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-2">
+                  <div className="flex min-w-0 items-start gap-3">
                     <input
                       type="checkbox"
-                      className="mt-1 shrink-0"
+                      className="mt-1.5 shrink-0"
                       data-testid="select-tender"
                       aria-label={`Select ${card.title}`}
                       checked={selected.has(card.tender_id)}
                       onChange={() => toggle(card.tender_id)}
                     />
+                    {/* Fit is the one number that decides whether this row is
+                        worth your afternoon, and it was a grey pill among five
+                        other grey pills. As a ring it is the first thing the
+                        eye lands on, and it still prints the figure. */}
+                    {card.fit_score != null && (
+                      <FitRing value={card.fit_score} />
+                    )}
                     <button
                       onClick={() => open(card)}
-                      className="text-left text-sm font-semibold text-ink transition-colors duration-150 hover:text-indigo"
+                      className="mt-0.5 text-left text-[15px] font-semibold leading-snug text-ink transition-colors duration-150 hover:text-indigo"
                     >
                       {card.title}
                     </button>
@@ -492,11 +617,6 @@ export default function App({
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-subtle">
                   <Pill>{card.source}</Pill>
                   {card.external_id && <Pill>{card.external_id}</Pill>}
-                  {card.fit_score != null && (
-                    <Pill tone="brand">
-                      <span data-numeric>fit {(card.fit_score * 100).toFixed(0)}%</span>
-                    </Pill>
-                  )}
                   {card.checkpoint0 && <Pill tone="warning">checkpoint-0: {card.checkpoint0}</Pill>}
                 </div>
 
@@ -587,7 +707,8 @@ export default function App({
                           : "Extract the rules and check them — this is the step that calls a model"
                       }
                     >
-                      ⚡ Process with AI
+                      <Zap size={13} strokeWidth={2} aria-hidden />
+                      Process with AI
                     </Button>
                   ) : (
                     <>
@@ -600,7 +721,8 @@ export default function App({
                           rel="noreferrer noopener"
                           className="inline-flex items-center gap-1.5 rounded-[8px] border border-indigo/25 bg-indigo-tint px-2.5 py-1 text-xs font-medium text-indigo transition-colors duration-150 hover:bg-indigo/10"
                         >
-                          Open on portal ↗
+                          <ExternalLink size={12} strokeWidth={2} aria-hidden />
+                          Open on portal
                         </a>
                       ) : (
                         /* No link can land on this tender. Offer the reference to
@@ -614,7 +736,8 @@ export default function App({
                               className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-white px-2.5 py-1 font-mono text-xs text-ink transition-colors duration-150 hover:bg-surface"
                               title="Copy the tender reference, to paste into the portal's search"
                             >
-                              ⧉ {card.external_id}
+                              <Copy size={12} strokeWidth={2} aria-hidden />
+                              {card.external_id}
                             </button>
                           )}
                           {card.portal_search_url && (
@@ -644,7 +767,7 @@ export default function App({
                           onClick={() => onFetchDocument(card)}
                           title="This portal serves the PDF directly — fetch and read it now (free, no model call)"
                         >
-                          {busy === card.tender_id ? "Fetching…" : "⬇ Fetch its PDF"}
+                          {busy === card.tender_id ? "Fetching…" : "Fetch its PDF"}
                         </Button>
                       ) : (
                         <Button
@@ -653,7 +776,8 @@ export default function App({
                           onClick={() => fileInput.current?.click()}
                           title="Download the PDF from the portal, then upload it here to read it"
                         >
-                          ↑ Upload its PDF
+                          <Upload size={13} strokeWidth={2} aria-hidden />
+                          Upload its PDF
                         </Button>
                       )}
                     </>
@@ -669,13 +793,14 @@ export default function App({
                     onClick={() => setConfirmDelete(card)}
                     title="Delete this tender — irreversible, and written to the audit log"
                   >
+                    <Trash2 size={13} strokeWidth={2} aria-hidden />
                     Delete
                   </Button>
                 </div>
               </div>
             </Card>
-          ))}
-      </div>
+        ))}
+      </Stagger>
     </div>
   );
 }

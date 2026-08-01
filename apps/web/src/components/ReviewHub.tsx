@@ -5,6 +5,8 @@
 // numbered as the SPEC numbers them, each with the reason it is waiting and a
 // link straight to the control that clears it. It reads state the Workspace has
 // already fetched — it adds no requests and owns no truth of its own.
+import { Stagger } from "../ui/motion";
+import { CircleCheckBig } from "lucide-react";
 import type { ReactNode } from "react";
 import { Pill } from "../ui/chips";
 import { Button, Card, EmptyState, FieldLabel } from "../ui/primitives";
@@ -160,14 +162,14 @@ export function ReviewHub({
 
       {items.length === 0 ? (
         <EmptyState
-          icon="✓"
+          icon={<CircleCheckBig size={40} strokeWidth={1.25} className="text-success" />}
           title="Nothing is waiting for you"
           body="Every checkpoint on this tender is clear. When the system is unsure, or when a decision is a human's to make, it will appear here."
         />
       ) : (
-        <ul className="space-y-3">
+        <Stagger as="ul" className="space-y-3">
           {items.map((item) => (
-            <li key={`${item.checkpoint}-${item.title}`}>
+            <div key={`${item.checkpoint}-${item.title}`}>
               <Card className={item.blocking ? "border-warning/30" : ""}>
                 <div data-testid="review-item" className="flex items-start gap-3">
                   <span
@@ -201,9 +203,9 @@ export function ReviewHub({
                   </Button>
                 </div>
               </Card>
-            </li>
+            </div>
           ))}
-        </ul>
+        </Stagger>
       )}
     </div>
   );

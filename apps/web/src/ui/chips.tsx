@@ -1,6 +1,7 @@
 // Status primitives. Every one of these carries a GLYPH or a WORD as well as a
 // colour — a bid manager may be colour-blind, and a projector may wash the hues
 // out entirely. Colour is the accent, never the message (SPEC §17).
+import { Clock } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** VerdictBadge — the compliance matrix's verdict cell. */
@@ -98,7 +99,7 @@ export function CountdownChip({
         urgent ? "animate-urgent" : ""
       }`}
     >
-      <span aria-hidden>⏱</span>
+      <Clock size={12} strokeWidth={2} aria-hidden className="shrink-0" />
       {label}
     </span>
   );

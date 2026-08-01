@@ -7,6 +7,12 @@
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
 
+/* JetBrains Mono, same OFL-1.1 licence as Inter, same self-hosting rule.
+   Used only where the content IS technical — element ids, clause references,
+   terminal output, the rupee ledger — never for prose. */
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
 /* ---------------------------------------------------------------------------
    BidProof design tokens (SPEC §17).
 
@@ -37,8 +43,29 @@
   --color-danger: #c23a34;
   --color-danger-tint: #fbeae9;
 
+  /* ---- The dark register -------------------------------------------------
+     BidProof speaks in two registers. The light tokens above are where Priya
+     WORKS — nobody reads a 300-page compliance matrix on black. These are
+     where the product SHOWS itself: the landing page, the Agent Console, the
+     Evaluation screen, and every empty state.
+
+     They are a family with the indigo above, not a second theme: --color-void
+     is near-black carrying the same blue cast as --color-ink, so the two
+     registers read as one product seen under different light. */
+  --color-void: #0a0b14;
+  --color-void-raised: #12141f;
+  --color-void-line: #23263a;
+
+  /* Brand indigo is #1e2170 — far too dark to sit ON the void. The dark
+     register gets its own lift of the same hue: --accent for text (7.0:1 on
+     void, AA for body), --accent-dim for fills and borders where contrast is
+     not a reading requirement. */
+  --color-accent: #a5b4fc;
+  --color-accent-dim: #6366f1;
+
   /* Type */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
 
   /* Radius: 12 is the product's shape; sm/lg are its only relatives */
   --radius-sm: 8px;
@@ -49,6 +76,12 @@
   --shadow-card: 0 1px 2px rgba(27, 29, 58, 0.06), 0 1px 3px rgba(27, 29, 58, 0.04);
   --shadow-overlay: 0 4px 12px rgba(27, 29, 58, 0.10), 0 2px 4px rgba(27, 29, 58, 0.06);
   --shadow-modal: 0 16px 48px rgba(27, 29, 58, 0.20), 0 4px 12px rgba(27, 29, 58, 0.10);
+
+  /* The dark register's only depth effect. A hairline of accent plus a wide
+     soft fall — shadow alone is invisible on near-black, so the ring is what
+     actually separates a raised surface from the void. */
+  --shadow-glow: 0 0 0 1px rgba(99, 102, 241, 0.18),
+                 0 8px 32px rgba(10, 11, 20, 0.60);
 }
 
 @layer base {
@@ -95,6 +128,43 @@
   /* The sidebar rail sits on brand indigo; its focus ring must invert. */
   .on-indigo :focus-visible {
     outline-color: #ffffff;
+  }
+
+  /* Anything inside the dark register: invert the focus ring the same way, and
+     let the mono face carry technical text without every call site repeating
+     the stack. */
+  .on-void :focus-visible {
+    outline-color: var(--color-accent);
+  }
+
+  /* The eyebrow that opens a section in the dark register — "[ features ]",
+     "[ pipeline ]". Small, spaced, mono, quiet. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /* A single soft light behind a hero or a card, so the void has depth without
+     a gradient that fights the content sitting on it. */
+  .void-glow {
+    background-image: radial-gradient(
+      60% 50% at 50% 0%,
+      rgba(99, 102, 241, 0.16) 0%,
+      rgba(99, 102, 241, 0) 70%
+    );
+  }
+
+  /* Hairline grid, the texture Nexflow uses to stop large dark areas reading
+     as empty. Deliberately near-invisible: it should register as texture, not
+     as a table. */
+  .void-grid {
+    background-image:
+      linear-gradient(var(--color-void-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-void-line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.35;
   }
 
   /* Countdown urgency: a slow pulse, never a bounce (SPEC §17 asks for calm). */

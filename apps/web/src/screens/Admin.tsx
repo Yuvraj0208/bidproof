@@ -5,6 +5,7 @@
 // shown as governed controls: the SPEC requires them to exist and be visible,
 // and where the backend does not yet enforce one the UI says so rather than
 // pretending the lever is wired.
+import { Reveal } from "../ui/motion";
 import { useEffect, useState } from "react";
 import { API_BASE, authHeaders, type ModelHealth } from "../api";
 import { DataTable } from "../ui/DataTable";
@@ -63,7 +64,8 @@ export default function Admin() {
       />
 
       {/* Model configuration per role */}
-      <Card className="mb-4">
+      <Reveal className="mb-4">
+      <Card>
         <FieldLabel>Model configuration (per role)</FieldLabel>
         <p className="mt-1 text-xs text-ink-muted">
           Application code names only a role — small, mid or strong. Which model
@@ -98,6 +100,7 @@ export default function Admin() {
           })}
         </div>
       </Card>
+      </Reveal>
 
       <div className="mb-4 grid gap-4 md:grid-cols-2">
         {/* Roles */}
@@ -196,6 +199,7 @@ export default function Admin() {
       </div>
 
       {/* Append-only audit log */}
+      <Reveal>
       <Card padded={false}>
         <div className="border-b border-hairline px-4 py-3">
           <FieldLabel>Audit log (append-only)</FieldLabel>
@@ -253,6 +257,7 @@ export default function Admin() {
           />
         )}
       </Card>
+      </Reveal>
     </div>
   );
 }

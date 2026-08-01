@@ -92,18 +92,23 @@ export function PipelineGraph({
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
 
   return (
+    // The one dark panel inside a light screen. The Console is where the
+    // product SHOWS its machinery, and the void register makes the pipeline
+    // read as instrumentation rather than as another table.
     <div
       data-testid="pipeline-graph"
-      className="mb-5 overflow-x-auto rounded-[12px] border border-hairline bg-white p-4"
+      className="on-void relative mb-5 overflow-hidden rounded-[12px] border border-void-line bg-void p-4 shadow-glow"
     >
-      <div className="mb-3 flex items-baseline gap-2">
-        <h3 className="text-sm font-semibold text-ink">Pipeline</h3>
-        <span className="text-[11px] text-ink-subtle">
+      <div aria-hidden className="pointer-events-none absolute inset-0 void-grid" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 void-glow" />
+      <div className="relative mb-3 flex flex-wrap items-baseline gap-2">
+        <h3 className="eyebrow text-accent">pipeline</h3>
+        <span className="text-[11px] text-white/40">
           drawn from the running graph, not a diagram
         </span>
       </div>
 
-      <div className="flex min-w-max items-stretch gap-1">
+      <div className="relative flex min-w-max items-stretch gap-1 overflow-x-auto">
         {columns.map((column, index) => (
           <div key={index} className="flex items-center gap-1">
             <div className="flex flex-col justify-center gap-1.5">
@@ -126,12 +131,15 @@ export function PipelineGraph({
                           : undefined
                     }
                     className={[
-                      "rounded-[8px] border px-3 py-2 text-xs whitespace-nowrap",
+                      "rounded-[8px] border px-3 py-2 text-xs whitespace-nowrap transition-colors duration-150",
                       node.human_only
-                        ? "border-warning bg-warning-tint font-medium text-ink"
+                        ? // The checkpoint is the one node that is not the
+                          // product's to pass. It gets its own colour so it
+                          // never reads as just another step.
+                          "border-warning/60 bg-warning/15 font-medium text-warning"
                         : ran
-                          ? "border-indigo bg-indigo-tint text-indigo"
-                          : "border-hairline bg-surface text-ink-muted",
+                          ? "border-accent-dim bg-accent-dim/15 text-accent"
+                          : "border-void-line bg-void-raised text-white/45",
                     ].join(" ")}
                   >
                     {node.gate !== null ? (
@@ -148,7 +156,7 @@ export function PipelineGraph({
                       LABEL[id] ?? id
                     )}
                     {node.parallel_with.length > 0 && (
-                      <span className="ml-1.5 text-[10px] text-ink-subtle">
+                      <span className="ml-1.5 text-[10px] text-white/35">
                         ∥
                       </span>
                     )}
@@ -157,7 +165,7 @@ export function PipelineGraph({
               })}
             </div>
             {index < columns.length - 1 && (
-              <span aria-hidden className="px-0.5 text-ink-subtle">
+              <span aria-hidden className="px-0.5 text-white/25">
                 →
               </span>
             )}
@@ -165,9 +173,9 @@ export function PipelineGraph({
         ))}
       </div>
 
-      <p className="mt-3 text-[11px] text-ink-subtle">
-        <span className="text-ink-muted">∥</span> runs at the same time ·{" "}
-        <span className="text-ink-muted">■</span> a human decides, and the graph
+      <p className="relative mt-3 text-[11px] text-white/40">
+        <span className="text-accent">∥</span> runs at the same time ·{" "}
+        <span className="text-warning">■</span> a human decides, and the graph
         has no path around it
       </p>
     </div>

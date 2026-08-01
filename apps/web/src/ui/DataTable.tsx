@@ -155,7 +155,10 @@ export function DataTable<Row>({
                 tabIndex={index === focused ? 0 : -1}
                 onFocus={() => setFocused(index)}
                 onClick={() => onRowActivate?.(row)}
-                className={`border-b border-hairline/70 transition-colors duration-150 last:border-0 ${
+                // `group` lets a cell react to the whole row being hovered —
+                // the Compliance Matrix uses it so the proof affordance
+                // brightens wherever on the row you point.
+                className={`group border-b border-hairline/70 transition-colors duration-150 last:border-0 ${
                   index % 2 ? "bg-surface/40" : "bg-white"
                 } ${onRowActivate ? "cursor-pointer" : ""} hover:bg-indigo-tint focus:bg-indigo-tint focus:outline-none`}
               >

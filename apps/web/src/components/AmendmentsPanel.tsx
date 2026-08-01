@@ -1,6 +1,8 @@
 // Amendment alerts (US-07): each corrigendum names exactly what changed,
 // which rules broke, and how the EV moved. Upload a corrigendum to run the
 // watcher.
+import { GitCompareArrows } from "lucide-react";
+import { EmptyState } from "../ui/primitives";
 import { useRef } from "react";
 import type { Amendment } from "../api";
 
@@ -44,9 +46,11 @@ export function AmendmentsPanel({
       </div>
 
       {amendments.length === 0 && (
-        <p className="text-sm text-ink-muted">
-          No amendments yet. Upload a corrigendum to diff it against this tender.
-        </p>
+        <EmptyState
+          icon={<GitCompareArrows size={40} strokeWidth={1.25} className="text-ink-subtle" />}
+          title="No amendments yet"
+          body="Upload a corrigendum and it is diffed against this tender — you see which rules moved, which verdicts broke, and what it did to the expected value."
+        />
       )}
 
       {amendments.map((a) => {

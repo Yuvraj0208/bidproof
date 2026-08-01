@@ -1,6 +1,9 @@
 // The Model Comparison Lab (US-14, SPEC screen 7): the same gold set scored
 // across models — F1 per family, exact numbers, hallucination, citation,
 // speed, ₹/tender. Adopting the winner is a config change, not code.
+import { Reveal } from "../ui/motion";
+import { Scale, TriangleAlert } from "lucide-react";
+import { EmptyState } from "../ui/primitives";
 import type { LeaderboardRow, ModelLabResult } from "../api";
 
 function bar(pct: number, color: string) {
@@ -32,7 +35,6 @@ export function ModelLab({
         {result && (
           <span className="text-xs text-ink-subtle">
             same gold set ({result.gold_tenders} tenders) · role: {result.role}
-            {result.simulated ? " · simulated profiles" : ""}
           </span>
         )}
         <button
@@ -45,10 +47,32 @@ export function ModelLab({
       </div>
 
       {!result && (
-        <p className="text-sm text-ink-muted">
-          Run the same gold set through every model and compare accuracy, speed,
-          and cost. The winner can be adopted as a config change.
-        </p>
+        <EmptyState
+          icon={<Scale size={40} strokeWidth={1.25} className="text-ink-subtle" />}
+          title="No leaderboard yet"
+          body="Run the same gold set through every model and compare accuracy, speed and cost. Because every call goes through the gateway's small/mid/strong roles, adopting the winner is a config change rather than code."
+        />
+      )}
+
+      {/* The honesty banner, in the same shape Analytics uses for an
+          uncalibrated metric. This used to be eleven grey pixels reading
+          "· simulated profiles" beside the title, which is not a disclosure —
+          it is a place to point at afterwards. These rows come from
+          `services/modellab.py::_simulate`; no model is called. Someone
+          discovering that mid-demo is far worse than reading it here. */}
+      {result?.simulated && (
+        <div
+          data-testid="modellab-simulated"
+          className="mb-3 flex gap-2 rounded-[8px] border border-dashed border-warning/40 bg-warning-tint px-3 py-2 text-xs text-warning"
+        >
+          <TriangleAlert size={14} strokeWidth={2} aria-hidden className="mt-px shrink-0" />
+          <span>
+            <span className="font-medium">These scores are simulated. </span>
+            The comparison harness runs, but the per-model figures come from
+            profiles rather than from real calls through the gateway. Treat this
+            as the shape of the answer, not the answer.
+          </span>
+        </div>
       )}
 
       {result && (
@@ -60,7 +84,7 @@ export function ModelLab({
               ₹{winner.cost_per_tender_inr}/tender
             </div>
           )}
-          <div className="overflow-x-auto rounded-[12px] border border-hairline bg-white shadow-card">
+          <Reveal className="overflow-x-auto rounded-[12px] border border-hairline bg-white shadow-card">
             <table className="w-full text-left text-xs" data-testid="leaderboard">
               <thead className="bg-surface text-ink-subtle">
                 <tr>
@@ -97,13 +121,7 @@ export function ModelLab({
                 ))}
               </tbody>
             </table>
-          </div>
-          {result.simulated && (
-            <p className="mt-2 text-[11px] text-ink-subtle">
-              Profiles are simulated until API keys are configured; the scoring
-              is real and swapping in a live model is a config change.
-            </p>
-          )}
+          </Reveal>
         </>
       )}
     </div>

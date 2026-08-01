@@ -1,7 +1,11 @@
 // The Agent Console (US-12): every agent call under the tender's trace id,
 // and the totals line that is the whole business case —
 // "5 agent calls · 12,300 tokens · ₹38.40 · 6.2 s" vs two man-days.
+import { Stagger } from "../ui/motion";
 import { PipelineGraph, type PipelineGraphData } from "./PipelineGraph";
+import { GraphArt } from "../ui/artwork";
+import { EmptyState } from "../ui/primitives";
+
 export interface AgentRunData {
   id: string;
   agent: string;
@@ -47,9 +51,13 @@ export function AgentConsole({
 }) {
   if (runs.length === 0) {
     return (
-      <p className="p-6 text-sm text-ink-muted">
-        No agent runs recorded yet for this tender.
-      </p>
+      <div className="p-6">
+        <EmptyState
+          icon={<GraphArt />}
+          title="Nothing has run for this tender yet"
+          body="Every agent call is recorded here under the tender's trace id — model role, tokens, rupees and latency. Press Process with AI on the radar to start one."
+        />
+      </div>
     );
   }
   return (
@@ -62,10 +70,12 @@ export function AgentConsole({
         />
       )}
       <div className="mb-4 flex items-center gap-3">
+        {/* SPEC §18 never-cut: this line IS the business case. It gets the
+            weight of a headline rather than of a caption. */}
         <span
           data-testid="totals-line"
           data-numeric
-          className="rounded-[8px] bg-indigo-tint px-3 py-1.5 text-sm font-medium text-indigo"
+          className="rounded-[8px] border border-indigo/15 bg-indigo-tint px-3 py-1.5 text-sm font-semibold tracking-[-0.01em] text-indigo"
         >
           {totals ? totalsLine(totals) : ""}
         </span>
@@ -77,9 +87,9 @@ export function AgentConsole({
           {replaying ? "Replaying…" : "Replay run"}
         </button>
       </div>
-      <ol className="space-y-2">
+      <Stagger as="ol" className="space-y-2">
         {runs.map((run) => (
-          <li
+          <div
             key={run.id}
             data-testid="agent-run"
             className="rounded-[12px] border border-hairline bg-white p-3 shadow-card transition-shadow duration-150 hover:shadow-overlay"
@@ -108,12 +118,15 @@ export function AgentConsole({
                 {run.duration_ms} ms
               </span>
             </div>
+            {/* The meta blob is genuinely technical — element counts, node
+                names, model calls. Mono makes it scannable instead of making
+                it look like prose that failed to wrap. */}
             <div className="mt-1 truncate font-mono text-[11px] text-ink-subtle">
               {JSON.stringify(run.meta)}
             </div>
-          </li>
+          </div>
         ))}
-      </ol>
+      </Stagger>
     </div>
   );
 }

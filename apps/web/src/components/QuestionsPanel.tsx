@@ -1,6 +1,8 @@
 // Pre-bid question pack (US-08): a drafted letter for every rule we fail,
 // each citing its clause + page. Drafts only — the human sends. There is
 // deliberately no "send" button here.
+import { MessageSquareQuote } from "lucide-react";
+import { EmptyState } from "../ui/primitives";
 import type { QueryLetter } from "../api";
 
 export function QuestionsPanel({
@@ -35,10 +37,11 @@ export function QuestionsPanel({
       </div>
 
       {letters.length === 0 && (
-        <p className="text-sm text-ink-muted">
-          No queries drafted. When a mandatory rule fails, a letter is drafted
-          here asking the buyer to relax it.
-        </p>
+        <EmptyState
+          icon={<MessageSquareQuote size={40} strokeWidth={1.25} className="text-ink-subtle" />}
+          title="No queries drafted"
+          body="When a mandatory rule fails, a letter is drafted here asking the buyer to relax it — with the clause it refers to already cited."
+        />
       )}
 
       {letters.map((letter) => (

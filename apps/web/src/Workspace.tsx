@@ -694,7 +694,18 @@ export function Workspace({
         </div>
       ) : (
       <div className="flex min-h-0 flex-1">
-        <aside className="w-[30rem] shrink-0 overflow-auto border-r bg-white">
+        {/* The Compliance Matrix carries five columns — rule, our position,
+            verdict, confidence, proof — and 30rem clipped the last two on any
+            normal laptop. It gets a proportional share that grows with the
+            window instead, while the Rules list stays at its fixed width
+            because it is a single column of text. */}
+        <aside
+          className={`shrink-0 overflow-auto border-r bg-white ${
+            tab === "matrix"
+              ? "w-[30rem] xl:w-[46%] 2xl:w-[52%]"
+              : "w-[30rem]"
+          }`}
+        >
           {tab === "matrix" ? (
             <MatrixTable
               verdicts={verdicts}

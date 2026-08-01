@@ -4,9 +4,11 @@
 // disagree with a number in the pilot report. Where a metric is not yet
 // calibrated the screen SAYS SO (is_this_honest: false) instead of drawing a
 // confident-looking curve over data we do not have.
+import { Reveal } from "../ui/motion";
 import { useEffect, useState } from "react";
 import { API_BASE, authHeaders } from "../api";
 import { formatInr } from "../ui/chips";
+import { BarSeries, Donut, Funnel } from "../ui/charts";
 import {
   Card,
   FieldLabel,
@@ -56,24 +58,6 @@ function NotCalibrated({ note }: { note: string }) {
   );
 }
 
-function FunnelBar({ stage, count, max }: { stage: string; count: number; max: number }) {
-  const pct = max ? Math.round((count / max) * 100) : 0;
-  return (
-    <div className="mb-2">
-      <div className="mb-1 flex items-baseline justify-between text-xs">
-        <span className="text-ink-muted">{stage}</span>
-        <span data-numeric className="font-medium text-ink">{count}</span>
-      </div>
-      <div className="h-2 w-full rounded-[8px] bg-surface">
-        <div
-          className="h-2 rounded-[8px] bg-indigo transition-all duration-200"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
 export default function Analytics() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +93,6 @@ export default function Analytics() {
     );
   }
 
-  const maxStage = Math.max(...data.funnel.map((f) => f.count), 1);
   const maxCost = Math.max(...data.cost.trend.map((t) => t.cost_inr), 0.0001);
 
   return (
@@ -151,13 +134,15 @@ export default function Analytics() {
         </div>
       </Card>
 
-      <div className="mb-4 grid gap-4 md:grid-cols-2">
+      <Reveal className="mb-4 grid gap-4 md:grid-cols-2">
         <Card>
           <FieldLabel>Pipeline funnel</FieldLabel>
+          <p className="mt-1 text-xs text-ink-subtle">
+            How many tenders survive each stage. The drop between two stages is
+            the number worth reading.
+          </p>
           <div className="mt-3">
-            {data.funnel.map((stage) => (
-              <FunnelBar key={stage.stage} {...stage} max={maxStage} />
-            ))}
+            <Funnel stages={data.funnel} />
           </div>
         </Card>
 
@@ -172,14 +157,15 @@ export default function Analytics() {
               size="lg"
             />
             {data.dq_risks.by_family.length > 0 ? (
-              <ul className="mt-4 space-y-1 text-sm">
-                {data.dq_risks.by_family.map((f) => (
-                  <li key={f.family} className="flex justify-between border-b border-hairline py-1">
-                    <span className="text-ink-muted">{f.family}</span>
-                    <span data-numeric className="font-medium text-ink">{f.count}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-4">
+                <BarSeries
+                  fill="fill-warning"
+                  data={data.dq_risks.by_family.map((f) => ({
+                    label: f.family,
+                    value: f.count,
+                  }))}
+                />
+              </div>
             ) : (
               <p className="mt-3 text-sm text-ink-muted">
                 No blocking findings yet — run a compliance check.
@@ -187,9 +173,9 @@ export default function Analytics() {
             )}
           </div>
         </Card>
-      </div>
+      </Reveal>
 
-      <div className="mb-4 grid gap-4 md:grid-cols-2">
+      <Reveal className="mb-4 grid gap-4 md:grid-cols-2">
         <Card>
           <FieldLabel>Turnaround time</FieldLabel>
           <div className="mt-3">
@@ -219,6 +205,7 @@ export default function Analytics() {
                   : "no decided tender yet"
               }
               tone="brand"
+              trend={data.cost.trend.map((d) => d.cost_inr)}
             />
             {data.cost.trend.length > 0 ? (
               <div className="mt-4 flex h-24 items-end gap-1">
@@ -234,13 +221,18 @@ export default function Analytics() {
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-ink-muted">No model calls in this window.</p>
+              // Spend of zero is a real answer, not a missing one: the pipeline
+              // ran and nothing reached a model. Say that rather than showing an
+              // empty frame.
+              <p className="mt-3 text-sm text-ink-muted">
+                No model calls in this window — nothing has cost anything yet.
+              </p>
             )}
           </div>
         </Card>
-      </div>
+      </Reveal>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <Reveal className="grid gap-4 md:grid-cols-2">
         <Card>
           <FieldLabel>Coverage vs accuracy</FieldLabel>
           <div className="mt-3">
@@ -251,22 +243,40 @@ export default function Analytics() {
           <FieldLabel>Calibration</FieldLabel>
           <div className="mt-3">
             <NotCalibrated note={data.calibration.note} />
-            <div className="mt-3">
+            <div className="mt-4">
               <FieldLabel>Confidence bands observed</FieldLabel>
-              <div className="mt-2 flex gap-4 text-sm">
-                {(["green", "yellow", "red"] as const).map((band) => (
-                  <div key={band}>
-                    <span className="capitalize text-ink-muted">{band}</span>{" "}
-                    <span data-numeric className="font-semibold text-ink">
-                      {data.confidence_bands[band] ?? 0}
-                    </span>
-                  </div>
-                ))}
+              <div className="mt-3">
+                <Donut
+                  centerValue={String(
+                    (["green", "yellow", "red"] as const).reduce(
+                      (sum, b) => sum + (data.confidence_bands[b] ?? 0),
+                      0,
+                    ),
+                  )}
+                  centerLabel="scored"
+                  segments={[
+                    {
+                      label: "green",
+                      value: data.confidence_bands.green ?? 0,
+                      className: "stroke-success",
+                    },
+                    {
+                      label: "yellow",
+                      value: data.confidence_bands.yellow ?? 0,
+                      className: "stroke-warning",
+                    },
+                    {
+                      label: "red",
+                      value: data.confidence_bands.red ?? 0,
+                      className: "stroke-danger",
+                    },
+                  ]}
+                />
               </div>
             </div>
           </div>
         </Card>
-      </div>
+      </Reveal>
     </div>
   );
 }

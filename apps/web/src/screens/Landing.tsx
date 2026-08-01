@@ -1,10 +1,20 @@
 // The landing page: the product's argument, then the door in.
 //
 // Design intent — the thing BidProof sells is *certainty*, so the page is built
-// on that feeling rather than on excitement: deep indigo, a lot of quiet space,
-// one idea per screenful, and a single animated flourish (the proof beam) that
-// literally demonstrates click-to-proof. No stock illustration, no gradients for
-// their own sake, nothing that moves without saying something.
+// on that feeling rather than on excitement: near-black ground, a lot of quiet
+// space, one idea per screenful, and a single animated flourish (the proof beam)
+// that literally demonstrates click-to-proof. No stock illustration, no
+// gradients for their own sake, nothing that moves without saying something.
+//
+// The page runs in the dark register (--color-void), not on brand indigo.
+// Indigo is the WORKING colour — the rail, the buttons, the chips Priya uses all
+// day. Here it becomes a light source in the dark rather than the floor, which
+// is what lets the product shots and the artwork carry the page.
+//
+// Every drawing is from `ui/artwork.tsx` and depicts something the product
+// actually does. There is no stock photography and no generic 3D shape, on
+// purpose: this is a product that refuses to guess, and the page should not
+// look like it borrowed its imagery either.
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -13,33 +23,14 @@ import {
   signIn,
   type OrgSummary,
 } from "../api";
+import { GraphArt, LedgerArt, ParseArt, WindowFrame } from "../ui/artwork";
+import { CountUp, Reveal } from "../ui/motion";
 import { OrgBadge } from "../ui/OrgBadge";
 import { Button } from "../ui/primitives";
 
 /* ------------------------------------------------------------------ atoms */
 
 const ease = [0.22, 0.61, 0.36, 1] as const;
-
-function Reveal({
-  children,
-  delay = 0,
-  y = 18,
-}: {
-  children: React.ReactNode;
-  delay?: number;
-  y?: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.55, delay, ease }}
-    >
-      {children}
-    </motion.div>
-  );
-}
 
 /** The hero's one flourish: a page of clauses, with the proof box landing on
  *  the clause that matters. It is the product's whole promise in four seconds. */
@@ -53,13 +44,10 @@ function ProofBeam() {
     { w: "70%", t: "Bidder must hold valid ISO 9001" },
   ];
   return (
-    <div className="relative rounded-[16px] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-sm">
-      <div className="mb-4 flex items-center gap-2 text-[11px] text-white/40">
-        <span className="h-2 w-2 rounded-full bg-white/25" />
-        <span className="h-2 w-2 rounded-full bg-white/25" />
-        <span className="ml-1 font-mono">tender.pdf · page 1</span>
-      </div>
-
+    // No chrome of its own: this now sits inside a WindowFrame, and two sets of
+    // traffic lights one inside the other read as a mistake rather than as
+    // depth. The page reference moved to the frame's address bar.
+    <div className="relative">
       <div className="space-y-2.5">
         {lines.map((line, i) => (
           <div key={line.t} className="relative">
@@ -314,16 +302,27 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
   useEffect(load, []);
 
   return (
-    <div className="min-h-screen bg-indigo text-white">
-      {/* a single soft light source, not a rainbow */}
+    <div className="on-void min-h-screen bg-void text-white">
+      {/* Near-black rather than brand indigo. Indigo is the working register —
+          the rail, the buttons, the chips Priya uses all day. The page that
+          SELLS the product wants the deeper ground, so the indigo becomes a
+          light source in it rather than the floor. */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0"
         style={{
           background:
-            "radial-gradient(1100px 620px at 68% -8%, rgba(120,128,255,0.30), transparent 62%)," +
-            "radial-gradient(800px 500px at 8% 108%, rgba(42,45,143,0.55), transparent 60%)",
+            "radial-gradient(1100px 620px at 68% -8%, rgba(99,102,241,0.22), transparent 62%)," +
+            "radial-gradient(800px 500px at 8% 108%, rgba(30,33,112,0.45), transparent 60%)",
         }}
+      />
+      {/* Hairline grid, so a large dark page reads as engineered rather than
+          as empty. Fades out below the fold — texture belongs behind the
+          argument, not behind the reading. */}
+      <div
+        aria-hidden
+        className="void-grid pointer-events-none fixed inset-x-0 top-0 h-[70vh]"
+        style={{ maskImage: "linear-gradient(to bottom, black, transparent)" }}
       />
 
       <div className="relative">
@@ -434,8 +433,92 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.7, ease }}
           >
-            <ProofBeam />
+            {/* The proof beam inside browser chrome. Floating on the page it
+                read as an illustration; in a window it reads as the product. */}
+            <WindowFrame label="bidproof.app/workspace — tender.pdf · page 1">
+              <div className="p-5">
+                <ProofBeam />
+              </div>
+            </WindowFrame>
           </motion.div>
+        </section>
+
+        {/* -------------------------------------------------- the numbers */}
+        <section className="border-y border-void-line bg-void-raised/40">
+          <div className="mx-auto grid max-w-6xl gap-8 px-6 py-12 sm:grid-cols-3">
+            {[
+              { n: 800, suffix: " pages", label: "read per tender, in minutes" },
+              { n: 3, prefix: "1 in ", label: "bids disqualified on paperwork" },
+              { n: 50, prefix: "under ₹", label: "of model spend per tender" },
+            ].map((stat) => (
+              <Reveal key={stat.label}>
+                <div className="text-center sm:text-left">
+                  <div className="text-[clamp(1.9rem,3.4vw,2.6rem)] font-semibold tracking-[-0.03em] text-white">
+                    {stat.prefix}
+                    <CountUp to={stat.n} />
+                    {stat.suffix}
+                  </div>
+                  <div className="mt-1 text-sm text-white/50">{stat.label}</div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ------------------------------------------------ before / after */}
+        <section className="mx-auto max-w-6xl px-6 py-20">
+          <Reveal>
+            <p className="eyebrow mb-3 text-accent">[ the difference ]</p>
+            <h2 className="max-w-2xl text-[clamp(1.6rem,3.2vw,2.3rem)] font-semibold leading-tight tracking-[-0.02em]">
+              The same tender, read two ways.
+            </h2>
+          </Reveal>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            <Reveal delay={0.05}>
+              <div className="h-full rounded-[12px] border border-void-line bg-void-raised/60 p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-danger" />
+                  <span className="eyebrow text-white/45">without bidproof</span>
+                </div>
+                <ul className="space-y-3 text-sm text-white/55">
+                  {[
+                    "Two people, three days, one 800-page PDF",
+                    "Turnover and EMD checked by eye, in a spreadsheet",
+                    "“I think we qualify” — no page, no proof",
+                    "The disqualifying clause found after submission",
+                  ].map((line) => (
+                    <li key={line} className="flex gap-2.5">
+                      <span aria-hidden className="mt-0.5 text-danger">✕</span>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+
+            <Reveal delay={0.12}>
+              <div className="h-full rounded-[12px] border border-accent-dim/30 bg-accent-dim/[0.07] p-6 shadow-glow">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-success" />
+                  <span className="eyebrow text-accent">with bidproof</span>
+                </div>
+                <ul className="space-y-3 text-sm text-white/80">
+                  {[
+                    "One operator, minutes, every page read",
+                    "Every number compared by code — never by a model",
+                    "Each rule clicks back to its page and its box",
+                    "Export refuses while a mandatory clause is unaddressed",
+                  ].map((line) => (
+                    <li key={line} className="flex gap-2.5">
+                      <span aria-hidden className="mt-0.5 text-success">✓</span>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Reveal>
+          </div>
         </section>
 
         {/* ------------------------------------------------------ the case */}
@@ -473,9 +556,56 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
           </div>
         </section>
 
+        {/* ------------------------------------------------- what it does */}
+        <section className="border-t border-void-line bg-void-raised/30">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <Reveal>
+              <p className="eyebrow mb-3 text-accent">[ inside ]</p>
+              <h2 className="max-w-2xl text-[clamp(1.6rem,3.2vw,2.3rem)] font-semibold leading-tight tracking-[-0.02em]">
+                Three things that are hard, done properly.
+              </h2>
+            </Reveal>
+
+            <div className="mt-10 grid gap-5 md:grid-cols-3">
+              {[
+                {
+                  Art: ParseArt,
+                  title: "Reads what others can't",
+                  body: "800 pages, scans, Hindi. A four-step ladder tries real text, then a layout engine, then OCR — and flags the page for a human rather than guessing.",
+                },
+                {
+                  Art: LedgerArt,
+                  title: "Prices the bid in rupees",
+                  body: "Expected value from your own margins, EMD and risk flags. Computed in plain code — a model is never allowed to produce a money figure.",
+                },
+                {
+                  Art: GraphArt,
+                  title: "Runs as a real graph",
+                  body: "Agents that don't depend on each other run together. The bid decision is a stop in the graph with no path around it, so a human always signs it.",
+                },
+              ].map((f, i) => (
+                <Reveal key={f.title} delay={i * 0.08}>
+                  <div className="h-full rounded-[12px] border border-void-line bg-void-raised/60 p-6 transition-colors duration-200 hover:border-accent-dim/40">
+                    <div className="text-accent">
+                      <f.Art className="opacity-90" />
+                    </div>
+                    <h3 className="mt-4 text-[15px] font-semibold text-white">
+                      {f.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-white/55">
+                      {f.body}
+                    </p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ------------------------------------------------------ pipeline */}
         <section className="mx-auto max-w-6xl px-6 py-20">
           <Reveal>
+            <p className="eyebrow mb-3 text-accent">[ how it works ]</p>
             <h2 className="text-[clamp(1.5rem,3vw,2.1rem)] font-semibold tracking-[-0.02em]">
               Five steps, and a human in charge of each one
             </h2>
