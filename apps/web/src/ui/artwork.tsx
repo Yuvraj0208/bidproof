@@ -77,10 +77,10 @@ export function WindowFrame({
  *  The product's whole promise in one drawing: every fact clicks back to a page
  *  and a box. Used wherever rules or proof are missing.
  */
-export function ProofArt({ className = "" }: { className?: string }) {
+export function ProofArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="a tender page with one clause highlighted as proof"
     >
@@ -114,10 +114,10 @@ export function ProofArt({ className = "" }: { className?: string }) {
  *  Used on the Decision Room before a decision exists, and anywhere expected
  *  value is the missing thing.
  */
-export function LedgerArt({ className = "" }: { className?: string }) {
+export function LedgerArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="a balance weighing expected value against risk"
     >
@@ -147,10 +147,10 @@ export function LedgerArt({ className = "" }: { className?: string }) {
  *  Deliberately the same shape the Agent Console draws from the compiled graph,
  *  so the illustration and the real thing agree.
  */
-export function GraphArt({ className = "" }: { className?: string }) {
+export function GraphArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="a pipeline whose two middle steps run at the same time"
     >
@@ -172,10 +172,10 @@ export function GraphArt({ className = "" }: { className?: string }) {
 }
 
 /** A radar sweep over scattered tenders — discovery with nothing found yet. */
-export function RadarArt({ className = "" }: { className?: string }) {
+export function RadarArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="a radar sweep looking for tenders"
     >
@@ -202,10 +202,10 @@ export function RadarArt({ className = "" }: { className?: string }) {
 }
 
 /** A document with a hard stop across it — the export blocker. */
-export function BlockedArt({ className = "" }: { className?: string }) {
+export function BlockedArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="an export refused until its blockers are cleared"
     >
@@ -229,10 +229,10 @@ export function BlockedArt({ className = "" }: { className?: string }) {
 }
 
 /** A page becoming structured elements — parsing, in progress or absent. */
-export function ParseArt({ className = "" }: { className?: string }) {
+export function ParseArt({ className = "", size = 120 }: { className?: string; size?: number }) {
   return (
     <svg
-      viewBox="0 0 120 96" width={120} height={96}
+      viewBox="0 0 120 96" width={size} height={size * 0.8}
       className={className} role="img"
       aria-label="a scanned page being turned into structured elements"
     >

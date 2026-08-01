@@ -24,7 +24,7 @@ import {
   type OrgSummary,
 } from "../api";
 import { GraphArt, LedgerArt, ParseArt, WindowFrame } from "../ui/artwork";
-import { CountUp, Reveal } from "../ui/motion";
+import { CountUp, Reveal, ScrollScene } from "../ui/motion";
 import { OrgBadge } from "../ui/OrgBadge";
 import { Button } from "../ui/primitives";
 
@@ -350,7 +350,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
         </header>
 
         {/* --------------------------------------------------------- hero */}
-        <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:pt-16">
+        <section className="mx-auto grid min-h-[86vh] max-w-6xl items-center gap-14 px-6 pb-24 pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:pt-14">
           <div>
             <motion.p
               initial={{ opacity: 0, y: 10 }}
@@ -366,7 +366,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.65, ease }}
-              className="text-[clamp(2.4rem,5.2vw,4rem)] font-semibold leading-[1.04] tracking-[-0.03em]"
+              className="text-[clamp(2.9rem,7.4vw,5.6rem)] font-semibold leading-[0.98] tracking-[-0.035em]"
             >
               One bid in three is
               <br />
@@ -389,7 +389,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.6, ease }}
-              className="mt-6 max-w-xl text-[17px] leading-relaxed text-white/70"
+              className="mt-7 max-w-xl text-[19px] leading-relaxed text-white/65"
             >
               BidProof finds the tenders you should bid on, reads all 800 pages,
               checks every rule against what your company actually has, and tells
@@ -435,11 +435,13 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
           >
             {/* The proof beam inside browser chrome. Floating on the page it
                 read as an illustration; in a window it reads as the product. */}
-            <WindowFrame label="bidproof.app/workspace — tender.pdf · page 1">
-              <div className="p-5">
-                <ProofBeam />
-              </div>
-            </WindowFrame>
+            <ScrollScene scale lift={26}>
+              <WindowFrame label="bidproof.app/workspace — tender.pdf · page 1">
+                <div className="p-5">
+                  <ProofBeam />
+                </div>
+              </WindowFrame>
+            </ScrollScene>
           </motion.div>
         </section>
 
@@ -451,7 +453,7 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
               { n: 3, prefix: "1 in ", label: "bids disqualified on paperwork" },
               { n: 50, prefix: "under ₹", label: "of model spend per tender" },
             ].map((stat) => (
-              <Reveal key={stat.label}>
+              <ScrollScene key={stat.label} lift={24}>
                 <div className="text-center sm:text-left">
                   <div className="text-[clamp(1.9rem,3.4vw,2.6rem)] font-semibold tracking-[-0.03em] text-white">
                     {stat.prefix}
@@ -460,22 +462,22 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
                   </div>
                   <div className="mt-1 text-sm text-white/50">{stat.label}</div>
                 </div>
-              </Reveal>
+              </ScrollScene>
             ))}
           </div>
         </section>
 
         {/* ------------------------------------------------ before / after */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        <section className="mx-auto max-w-6xl px-6 py-32">
           <Reveal>
             <p className="eyebrow mb-3 text-accent">[ the difference ]</p>
-            <h2 className="max-w-2xl text-[clamp(1.6rem,3.2vw,2.3rem)] font-semibold leading-tight tracking-[-0.02em]">
+            <h2 className="max-w-2xl text-[clamp(2rem,4.6vw,3.4rem)] font-semibold leading-tight tracking-[-0.02em]">
               The same tender, read two ways.
             </h2>
           </Reveal>
 
           <div className="mt-10 grid gap-5 lg:grid-cols-2">
-            <Reveal delay={0.05}>
+            <ScrollScene lift={32}>
               <div className="h-full rounded-[12px] border border-void-line bg-void-raised/60 p-6">
                 <div className="mb-4 flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-danger" />
@@ -495,9 +497,9 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
                   ))}
                 </ul>
               </div>
-            </Reveal>
+            </ScrollScene>
 
-            <Reveal delay={0.12}>
+            <ScrollScene lift={48}>
               <div className="h-full rounded-[12px] border border-accent-dim/30 bg-accent-dim/[0.07] p-6 shadow-glow">
                 <div className="mb-4 flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-success" />
@@ -517,15 +519,15 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
                   ))}
                 </ul>
               </div>
-            </Reveal>
+            </ScrollScene>
           </div>
         </section>
 
         {/* ------------------------------------------------------ the case */}
         <section className="border-t border-white/10 bg-ink/25">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-32">
             <Reveal>
-              <h2 className="max-w-2xl text-[clamp(1.5rem,3vw,2.1rem)] font-semibold leading-tight tracking-[-0.02em]">
+              <h2 className="max-w-2xl text-[clamp(2rem,4.6vw,3.4rem)] font-semibold leading-tight tracking-[-0.02em]">
                 Most tools summarise. This one proves.
               </h2>
             </Reveal>
@@ -558,10 +560,10 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
 
         {/* ------------------------------------------------- what it does */}
         <section className="border-t border-void-line bg-void-raised/30">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mx-auto max-w-6xl px-6 py-32">
             <Reveal>
               <p className="eyebrow mb-3 text-accent">[ inside ]</p>
-              <h2 className="max-w-2xl text-[clamp(1.6rem,3.2vw,2.3rem)] font-semibold leading-tight tracking-[-0.02em]">
+              <h2 className="max-w-2xl text-[clamp(2rem,4.6vw,3.4rem)] font-semibold leading-tight tracking-[-0.02em]">
                 Three things that are hard, done properly.
               </h2>
             </Reveal>
@@ -584,29 +586,29 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
                   body: "Agents that don't depend on each other run together. The bid decision is a stop in the graph with no path around it, so a human always signs it.",
                 },
               ].map((f, i) => (
-                <Reveal key={f.title} delay={i * 0.08}>
-                  <div className="h-full rounded-[12px] border border-void-line bg-void-raised/60 p-6 transition-colors duration-200 hover:border-accent-dim/40">
+                <ScrollScene key={f.title} lift={30 + i * 14}>
+                  <div className="h-full rounded-[16px] border border-void-line bg-void-raised/60 p-8 transition-colors duration-200 hover:border-accent-dim/40">
                     <div className="text-accent">
-                      <f.Art className="opacity-90" />
+                      <f.Art size={190} className="opacity-95" />
                     </div>
-                    <h3 className="mt-4 text-[15px] font-semibold text-white">
+                    <h3 className="mt-6 text-[19px] font-semibold tracking-[-0.01em] text-white">
                       {f.title}
                     </h3>
-                    <p className="mt-2 text-sm leading-relaxed text-white/55">
+                    <p className="mt-2.5 text-[15px] leading-relaxed text-white/55">
                       {f.body}
                     </p>
                   </div>
-                </Reveal>
+                </ScrollScene>
               ))}
             </div>
           </div>
         </section>
 
         {/* ------------------------------------------------------ pipeline */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
+        <section className="mx-auto max-w-6xl px-6 py-32">
           <Reveal>
             <p className="eyebrow mb-3 text-accent">[ how it works ]</p>
-            <h2 className="text-[clamp(1.5rem,3vw,2.1rem)] font-semibold tracking-[-0.02em]">
+            <h2 className="text-[clamp(2rem,4.6vw,3.4rem)] font-semibold tracking-[-0.02em]">
               Five steps, and a human in charge of each one
             </h2>
           </Reveal>
@@ -635,9 +637,9 @@ export default function Landing({ onSignedIn }: { onSignedIn: () => void }) {
 
         {/* ---------------------------------------------------------- cta */}
         <section className="border-t border-white/10">
-          <div className="mx-auto max-w-3xl px-6 py-24 text-center">
+          <div className="mx-auto max-w-3xl px-6 py-36 text-center">
             <Reveal>
-              <h2 className="text-[clamp(1.6rem,3.4vw,2.4rem)] font-semibold leading-tight tracking-[-0.02em]">
+              <h2 className="text-[clamp(2.2rem,5vw,3.8rem)] font-semibold leading-tight tracking-[-0.02em]">
                 Stop losing bids to paperwork
               </h2>
               <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-white/65">

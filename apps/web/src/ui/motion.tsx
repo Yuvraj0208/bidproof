@@ -14,7 +14,7 @@
 //    `prefers-reduced-motion` block in index.css cannot reach framer-motion's
 //    inline transforms, so every component here checks `useReducedMotion` and
 //    renders the final state directly.
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /** The product's easing curve: a confident start, a soft landing. */
@@ -186,6 +186,77 @@ export function CountUp({
     <span ref={ref} data-numeric className={className}>
       {format(still ? to : shown)}
     </span>
+  );
+}
+
+/** A section that responds to its own position in the scroll.
+ *
+ *  This is the difference between "content fades in once" and a page that
+ *  feels alive under the cursor: the panel lifts, scales and settles as it
+ *  crosses the viewport, and eases back out as it leaves. The movement is
+ *  small on purpose — 40px and 4% of scale. Anything larger stops being depth
+ *  and starts being a carnival ride, and this product sells certainty.
+ */
+export function ScrollScene({
+  children,
+  className,
+  /** How far the content travels, in px. */
+  lift = 40,
+  /** Whether it also scales. Off for text, on for product imagery. */
+  scale = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  lift?: number;
+  scale?: boolean;
+}) {
+  const still = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"],
+  });
+
+  // Peaks in the middle of the crossing, so a section is at rest exactly when
+  // it is the thing you are reading.
+  const y = useTransform(scrollYProgress, [0, 0.5, 1], [lift, 0, -lift * 0.5]);
+  const opacity = useTransform(scrollYProgress, [0, 0.18, 0.85, 1], [0, 1, 1, 0.6]);
+  const s = useTransform(scrollYProgress, [0, 0.5, 1], [0.96, 1, 0.99]);
+
+  if (still) return <div className={className}>{children}</div>;
+
+  return (
+    <motion.div
+      ref={ref}
+      className={className}
+      style={{ y, opacity, scale: scale ? s : undefined }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/** Slow parallax — the layer behind the content drifts at a different rate.
+ *  Used for the hero's glow and grid, so the page has depth without any
+ *  element that is being read ever moving. */
+export function Parallax({
+  children,
+  className,
+  distance = 80,
+}: {
+  children: ReactNode;
+  className?: string;
+  distance?: number;
+}) {
+  const still = useReducedMotion();
+  const { scrollY } = useScroll();
+  const y = useTransform(scrollY, [0, 900], [0, distance]);
+
+  if (still) return <div className={className}>{children}</div>;
+  return (
+    <motion.div className={className} style={{ y }}>
+      {children}
+    </motion.div>
   );
 }
 
