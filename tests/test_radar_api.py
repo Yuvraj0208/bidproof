@@ -3,6 +3,7 @@ queue + resolution, per-org config weights, RLS."""
 
 import json
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -153,3 +154,51 @@ async def test_radar_respects_rls(owner_conn):
         cards = (await client.get("/radar")).json()
 
     assert cards == []
+
+
+async def test_the_deadline_reason_is_recomputed_when_the_card_is_read(owner_conn):
+    """The card must explain itself as of today (SPEC section 3.2).
+
+    A CWC tender triaged on 30 July still said "closes in 8 days" on 3 August,
+    beside a countdown chip reading "4d left" — one card, two answers. Nothing
+    ever corrected it: re-listing a tender already held is a duplicate and
+    `_ingest_one` returns early, so the stored sentence just aged.
+
+    Here the stale phrase is written straight into the triage record, which is
+    exactly the state that outlived the tender on disk.
+    """
+    org_id = await create_org(owner_conn)
+    await seed_profile(owner_conn, org_id)
+
+    async with client_for(org_id) as client:
+        tender_id = await upload_digital(client)
+
+        closing = datetime.now(timezone.utc) + timedelta(days=4, hours=3)
+        await owner_conn.execute(
+            text(
+                "UPDATE tenders SET closing_at = :c, "
+                "triage = jsonb_set(triage, '{reasons}', :r::jsonb) WHERE id = :i"
+            ),
+            {
+                "c": closing,
+                "r": json.dumps(
+                    [
+                        "category 'storage racks' matched 25%",
+                        "tender value unknown",
+                        "closes in 8 days",   # what triage recorded four days ago
+                        "won in this category before",
+                    ]
+                ),
+                "i": tender_id,
+            },
+        )
+        await owner_conn.commit()
+
+        card = (await client.get("/radar", params={"list": "in_our_lane"})).json()[0]
+
+    assert "closes in 4 days" in card["reasons"]
+    assert "closes in 8 days" not in card["reasons"]
+    # Replaced in place; the durable reasons are still the original triage's.
+    assert card["reasons"][2] == "closes in 4 days"
+    assert card["reasons"][0] == "category 'storage racks' matched 25%"
+    assert card["reasons"][3] == "won in this category before"

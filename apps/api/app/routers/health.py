@@ -42,5 +42,7 @@ async def model_health(refresh: bool = False) -> dict:
     template answer is never mistaken for a model answer (FINISH_STATUS D9)."""
     status = availability.cached()
     if refresh or status is None:
-        status = await availability.refresh()
+        # `refresh` is the operator's explicit re-check; a stale cache is just
+        # the badge's 60s poll, and those coalesce onto a single probe.
+        status = await availability.refresh(force=refresh)
     return status

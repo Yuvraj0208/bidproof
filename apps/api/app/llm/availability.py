@@ -34,6 +34,15 @@ _probed_at: float = 0.0
 # lies about whether answers came from a model is worse than no badge.
 _CACHE_TTL_S = 60.0
 
+# Only ever one probe in flight. Every open tab polls the badge, and each poll
+# that missed the cache used to run its own full three-role probe at
+# `max_tokens=1600` — five tabs meant fifteen concurrent live calls. On
+# 2026-08-03 that showed up as five `/health/models` hits in a row followed by
+# `role mid did not answer within 45s` during a discovery run the probes were
+# themselves competing with. A diagnostic must never be the reason the thing it
+# diagnoses looks unhealthy.
+_probe_lock = asyncio.Lock()
+
 
 async def probe_roles(timeout_s: float = 45.0) -> dict:
     """Ask every role for a reply. Returns per-role health + overall mode.
@@ -110,11 +119,26 @@ async def _probe_one(gateway: LLMGateway, role: str, timeout_s: float) -> dict:
     return {"ok": False, "model": None, "error": detail}
 
 
-async def refresh() -> dict:
+async def refresh(force: bool = False) -> dict:
+    """Probe every role, coalescing callers that arrive together.
+
+    Whoever gets the lock does the work; everyone queued behind them re-reads
+    the cache and takes that answer, so N pollers cost one probe rather than N.
+
+    `force` is the operator pressing re-check after fixing the gateway — that
+    one must really go and look, or the badge would keep serving the bad news
+    they have just dealt with.
+    """
     global _status, _probed_at
-    _status = await probe_roles()
-    _probed_at = time.monotonic()
-    return _status
+    async with _probe_lock:
+        if not force:
+            # Someone may have probed while we waited; their answer is ours.
+            already = cached()
+            if already is not None:
+                return already
+        _status = await probe_roles()
+        _probed_at = time.monotonic()
+        return _status
 
 
 def cached() -> dict | None:

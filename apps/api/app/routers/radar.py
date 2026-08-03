@@ -3,8 +3,9 @@ Every card explains itself and carries {confidence, band, reasons} — the
 contract the US-13 confidence chip will render."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
+from bidproof_triage import refresh_deadline_reason
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -121,6 +122,10 @@ async def radar(
         ).all():
             parse_status.setdefault(tender_id_, status)
 
+        # One `now` for the whole list, so two cards read at the same moment
+        # cannot disagree about what day it is.
+        now = datetime.now(timezone.utc)
+
         return [
             RadarCard(
                 tender_id=t.id,
@@ -133,7 +138,13 @@ async def radar(
                 confidence=(t.triage or {}).get("confidence"),
                 band=(t.triage or {}).get("band"),
                 matched_category=(t.triage or {}).get("matched_category"),
-                reasons=(t.triage or {}).get("reasons", []),
+                # The deadline phrase is recomputed for today. Re-discovery of a
+                # tender already held is a duplicate and returns early, so the
+                # stored sentence would otherwise age a day per day while the
+                # countdown chip beside it stayed live.
+                reasons=refresh_deadline_reason(
+                    (t.triage or {}).get("reasons", []), t.closing_at, now
+                ),
                 checkpoint0=(t.triage or {}).get("checkpoint0"),
                 has_document=t.id in with_docs,
                 portal_url=portal_links.stable_portal_url(t.source, t.portal_url),

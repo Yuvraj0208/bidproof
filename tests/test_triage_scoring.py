@@ -8,7 +8,9 @@ from bidproof_triage import (
     OrgProfile,
     TenderSignals,
     Thresholds,
+    deadline_reason,
     extract_value_inr,
+    refresh_deadline_reason,
     triage,
 )
 
@@ -204,3 +206,74 @@ def test_a_real_match_still_reaches_in_our_lane():
     result = triage(signals, _profile(), Thresholds())
     assert result.radar_list == IN_OUR_LANE, (result.radar_list, result.reasons)
     assert result.fit_score >= 0.55
+
+# --- The deadline reason perishes; every other reason is a durable fact. ---
+#
+# Regression, seen live on 2026-08-03: a CWC tender triaged on 30 July still
+# explained itself with "closes in 8 days" while the countdown chip beside it
+# read "4d left" — the same card contradicting itself, on the one number a
+# bidder cannot afford to misread. SPEC section 3.2 (List B) frames the reason list
+# as the card explaining itself *now*, so the phrase must track today, not the
+# day the tender happened to be discovered.
+
+MYSORE_CLOSE = datetime(2026, 8, 7, 15, 0, tzinfo=timezone.utc)
+
+
+def test_deadline_reason_tracks_today_not_the_day_of_triage():
+    triaged_on = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+    assert deadline_reason(MYSORE_CLOSE, triaged_on) == "closes in 8 days"
+
+    read_on = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    assert deadline_reason(MYSORE_CLOSE, read_on) == "closes in 4 days"
+
+
+def test_deadline_reason_covers_unknown_and_passed():
+    now = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    assert deadline_reason(None, now) == "closing date unknown"
+    assert deadline_reason(now - timedelta(days=2), now) == "closing date has passed"
+
+
+STORED = [
+    "category 'storage racks' matched 25%",
+    "tender value unknown",
+    "closes in 8 days",
+    "won in this category before",
+    "passes 100% of provisional checks",
+]
+
+
+def test_stored_reasons_are_refreshed_against_the_live_deadline():
+    fresh = refresh_deadline_reason(
+        STORED, MYSORE_CLOSE, datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    )
+    # Replaced where it stood, so the card does not reshuffle as days pass.
+    assert fresh[2] == "closes in 4 days"
+    # The durable facts are the original triage's, untouched.
+    assert fresh[:2] == STORED[:2]
+    assert fresh[3:] == STORED[3:]
+
+
+def test_refresh_rewrites_a_passed_deadline_and_an_unknown_one():
+    now = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+
+    closed = refresh_deadline_reason(STORED, datetime(2026, 8, 1, tzinfo=timezone.utc), now)
+    assert closed[2] == "closing date has passed"
+
+    # A tender discovered without a date, given one by a later corrigendum.
+    was_unknown = [*STORED[:2], "closing date unknown", *STORED[3:]]
+    assert refresh_deadline_reason(was_unknown, MYSORE_CLOSE, now)[2] == "closes in 4 days"
+
+
+def test_refresh_appends_when_the_stored_triage_never_mentioned_a_deadline():
+    without = [r for r in STORED if "closes in" not in r]
+    fresh = refresh_deadline_reason(
+        without, MYSORE_CLOSE, datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    )
+    assert fresh[: len(without)] == without
+    assert fresh[-1] == "closes in 4 days"
+
+
+def test_refresh_leaves_an_empty_reason_list_alone():
+    # No triage has run yet; inventing a lone reason would be a card that
+    # explains itself with one arbitrary line.
+    assert refresh_deadline_reason([], MYSORE_CLOSE, NOW) == []

@@ -6,6 +6,11 @@ from bidproof_triage.scoring import (
     Thresholds,
     triage,
 )
+from bidproof_triage.reasons import (
+    deadline_reason,
+    is_deadline_reason,
+    refresh_deadline_reason,
+)
 from bidproof_triage.signals import days_to_close, extract_value_inr
 from bidproof_triage.types import (
     Category,
@@ -25,6 +30,9 @@ __all__ = [
     "Thresholds",
     "TriageResult",
     "days_to_close",
+    "deadline_reason",
     "extract_value_inr",
+    "is_deadline_reason",
+    "refresh_deadline_reason",
     "triage",
 ]

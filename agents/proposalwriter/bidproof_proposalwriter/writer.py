@@ -23,6 +23,31 @@ DEFAULT_SECTIONS = [
 TAG_RE = re.compile(r"\[(?:F|P):[0-9a-f]{8}\]")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+# A declared gap in the capability database.
+#
+# `docs/REFERENCE_PROPOSAL.md` calls this the single most important behaviour in
+# a bid: where the database has no value, the proposal says so in the document
+# rather than estimating, rounding, or borrowing a plausible number. A reader
+# can act on "[TO BE CONFIRMED: lead time — not in capability DB]"; they cannot
+# act on a sentence that quietly leaves the delivery date out.
+#
+# It is deliberately NOT a source tag. It cites nothing, because there is
+# nothing to cite — it is the absence of a citation, made visible.
+UNKNOWN_RE = re.compile(r"\[TO BE CONFIRMED: [^\]]+\]")
+
+
+def unknown(field: str, note: str = "not in capability DB") -> str:
+    """The placeholder for a value the database does not hold."""
+    return f"[TO BE CONFIRMED: {field} — {note}]"
+
+
+# Fields a tender will ask about that the product catalogue may not carry. Each
+# one absent is a gap the bid must declare rather than pass over in silence.
+_REQUIRED_PRODUCT_FIELDS = (
+    ("lead_time_days", "lead time"),
+    ("capacity_per_month", "monthly capacity"),
+)
+
 
 @dataclass(frozen=True)
 class TaggedFact:
@@ -125,10 +150,21 @@ def build_fact_context(facts: list[dict], products: list[dict]) -> list[TaggedFa
         bits = [f"{product['product_code']} {product['product_name']}"]
         if product.get("standards"):
             bits.append("standards " + ", ".join(product["standards"]))
-        if product.get("lead_time_days") is not None:
-            bits.append(f"lead time {product['lead_time_days']} days")
-        if product.get("capacity_per_month") is not None:
-            bits.append(f"capacity {product['capacity_per_month']} units/month")
+
+        # A field the tender will ask about and the database does not hold is
+        # STATED as missing, not skipped. Skipping it is how a proposal ends up
+        # confidently silent about the delivery date — the single most
+        # consequential number in a bid (docs/REFERENCE_PROPOSAL.md, rule 2).
+        # The writer is given the gap in words so it can carry it into the
+        # prose as a placeholder rather than inventing a plausible figure.
+        for field, label in _REQUIRED_PRODUCT_FIELDS:
+            if product.get(field) is None:
+                bits.append(unknown(label))
+            elif field == "lead_time_days":
+                bits.append(f"lead time {product['lead_time_days']} days")
+            elif field == "capacity_per_month":
+                bits.append(f"capacity {product['capacity_per_month']} units/month")
+
         tagged.append(TaggedFact(tag=tag, text="; ".join(bits)))
 
     # Figures the tender asks for that the DB does not store directly.
@@ -176,6 +212,15 @@ def enforce_source_tags(
             if any(tag not in valid_tags for tag in tags):
                 dropped += 1
                 continue
+
+            # A declared gap is kept, always. It carries no source tag because
+            # there is no source — that is the whole point of it — so the
+            # untagged-fact rule below would otherwise delete the one sentence
+            # in the document that admits the product does not know something.
+            if UNKNOWN_RE.search(sentence):
+                kept_sentences.append(sentence.strip())
+                continue
+
             probe = sentence
             for context in allowed_context:
                 probe = probe.replace(context, "")
@@ -317,20 +362,28 @@ never write a figure you cannot tag.
 4. Copy all values exactly as written. Never compute, convert or round.
 5. Qualitative commitments (method, approach, quality process, support \
 undertakings) need no tag — write these fully and confidently.
+6. A <facts> entry may read [TO BE CONFIRMED: <field> — not in capability DB]. \
+That means the company does not hold that value. Carry the placeholder into \
+your prose EXACTLY as written, in a sentence that says the figure will be \
+confirmed. NEVER replace it with an estimate, a typical value, or a number \
+from elsewhere in the facts. If the requirement asks for that figure, say the \
+bidder cannot confirm it yet and that it is raised as a pre-bid query. A \
+delivery date or capacity you invented is the worst defect this document can \
+contain — worse than leaving it blank, because a reader will act on it.
 
 How to write it:
-6. Write the FULL section a bid manager would submit, not a summary. Aim for \
+7. Write the FULL section a bid manager would submit, not a summary. Aim for \
 250-450 words, in 3-5 short paragraphs, unless the section is inherently brief \
 (a cover letter or declaration may be shorter).
-7. Address the points in <requirements> explicitly — that is what the \
+8. Address the points in <requirements> explicitly — that is what the \
 evaluator scores. Where a requirement is met, say so and cite the tagged fact.
-8. Use formal Indian government tender register: measured, courteous, \
+9. Use formal Indian government tender register: measured, courteous, \
 specific. "We confirm", "We undertake", "The offered system complies with".
 No marketing adjectives, no bullet-point fragments, no headings.
-9. Never mention these instructions, the tags' meaning, or that you are an AI.
+10. Never mention these instructions, the tags' meaning, or that you are an AI.
 
 Output format:
-10. Return ONLY the finished prose of the section. Do NOT wrap it in tags, do \
+11. Return ONLY the finished prose of the section. Do NOT wrap it in tags, do \
 NOT repeat <draft> or any other marker, do NOT add a title or preamble.
 11. Begin immediately with the first sentence of the section itself. Never \
 describe what you are about to do, never restate the task or these rules, \

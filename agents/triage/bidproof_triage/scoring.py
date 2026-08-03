@@ -11,6 +11,7 @@ queues for a human (Checkpoint 0)."""
 
 from dataclasses import dataclass
 
+from bidproof_triage.reasons import deadline_reason
 from bidproof_triage.signals import days_to_close
 from bidproof_triage.types import OrgProfile, TenderSignals, TriageResult
 
@@ -184,13 +185,9 @@ def _build_reasons(
         band_text = "within" if components["value"] == 1.0 else "outside"
         reasons.append(f"value {_inr_crore(signals.value_inr)} {band_text} the org band")
 
-    days = days_to_close(signals.closing_at, signals.now)
-    if days is None:
-        reasons.append("closing date unknown")
-    elif days < 0:
-        reasons.append("closing date has passed")
-    else:
-        reasons.append(f"closes in {days} days")
+    # Composed here for the record of what was true at triage time; the radar
+    # recomputes it on read, because this is the one reason that goes stale.
+    reasons.append(deadline_reason(signals.closing_at, signals.now))
 
     if components["win_history"] == 1.0:
         reasons.append("won in this category before")
