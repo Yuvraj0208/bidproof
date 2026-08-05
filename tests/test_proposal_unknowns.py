@@ -134,3 +134,34 @@ def test_every_section_still_carries_facts_after_a_tag_format_change():
             f"{section} produced only its opening line — the facts beneath it "
             "were filtered out by a tag prefix that no longer matches"
         )
+
+
+def test_a_clause_with_no_matching_record_gets_a_declared_gap_not_a_guess():
+    """Rule 3 says answer every clause; rule 2 says never invent.
+
+    Where those meet — a clause the capability DB cannot evidence — the answer
+    is a declared gap. Citing the nearest unrelated record instead would be
+    worse than silence, because a confident wrong citation survives review.
+    """
+    from bidproof_proposalwriter.writer import build_fact_context, _evidence_for
+
+    facts = [{
+        "id": type("U", (), {"hex": "bbbbbbbb2222"})(),
+        "fact_type": "certification", "value_text": "ISO 9001",
+        "value_number": None, "fiscal_year": None,
+        "legal_entity": None, "valid_until": None,
+    }]
+    tagged = build_fact_context(facts, [])
+
+    assert _evidence_for("Colour of the powder coating", tagged) is None
+    assert _evidence_for("ISO 9001 certification", tagged) is not None
+
+
+def test_a_standard_code_is_evidence_on_its_own():
+    """"IS 4923" identifies a clause; "the" does not. A token carrying digits
+    counts double, or a product that literally lists the standard is reported
+    as unevidenced."""
+    from bidproof_proposalwriter.writer import build_fact_context, _evidence_for
+
+    tagged = build_fact_context([], [product(standards=["IS 4923"])])
+    assert _evidence_for("Conformity to IS 4923", tagged) is not None

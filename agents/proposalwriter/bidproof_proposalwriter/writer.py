@@ -317,6 +317,59 @@ def _facts_of(
     ]
 
 
+# Stop-words carry no signal when matching a clause to a record — every tender
+# sentence contains "the", "shall" and "bidder".
+_NOISE = {
+    "the", "a", "an", "of", "and", "or", "to", "for", "in", "on", "with",
+    "shall", "must", "should", "be", "is", "are", "bidder", "tenderer",
+    "minimum", "not", "less", "than", "as", "per", "at", "any", "all",
+}
+
+
+def _evidence_for(
+    requirement: str, tagged: list[TaggedFact]
+) -> TaggedFact | None:
+    """The capability record that best answers this clause, or None.
+
+    Deliberately a keyword overlap and nothing cleverer. The point is not to be
+    right every time — it is to attach the RIGHT KIND of thing, and to return
+    None rather than the nearest record when nothing genuinely matches. A
+    confident citation of an unrelated fact is worse in a bid than an admitted
+    gap, because it survives review.
+    """
+    wanted = {
+        w for w in re.findall(r"[a-z0-9]+", requirement.lower())
+        if w not in _NOISE and len(w) > 2
+    }
+    if not wanted:
+        return None
+
+    best, best_score = None, 0
+    for fact in tagged:
+        # Score against the KNOWN part of the record only. Skipping any record
+        # that mentions a gap was too blunt: a product that knows its standards
+        # but not its lead time is still evidence for a standards clause, and
+        # excluding it reported "IS 4923" as unevidenced against a product that
+        # literally lists IS 4923. What must never happen is a gap being cited
+        # AS the evidence, and stripping it achieves that precisely.
+        known = UNKNOWN_RE.sub("", fact.text)
+        if not known.strip(" ;"):
+            continue
+        have = set(re.findall(r"[a-z0-9]+", known.lower()))
+        overlap = wanted & have
+        # A token carrying digits is a standard number, a year or a grade —
+        # "4923", "9001", "2024". Those identify a clause on their own, where
+        # a shared ordinary word does not, so they count double. Without this
+        # "Conformity to IS 4923" scored 1 against a product that literally
+        # lists IS 4923 and was reported as unevidenced.
+        score = sum(2 if any(c.isdigit() for c in w) else 1 for w in overlap)
+        if score > best_score:
+            best, best_score = fact, score
+
+    # One shared ordinary word is coincidence, not evidence.
+    return best if best_score >= 2 else None
+
+
 def deterministic_section(
     section_tag: str,
     tender_title: str,
@@ -391,8 +444,21 @@ def deterministic_section(
             "Deviations, where any, are consolidated in the Statement of "
             "Deviations."
         )
+        # One entry per clause, in the shape Part B uses: what was asked, the
+        # Bidder's position, and the evidence for it. A bare "complies" is what
+        # an evaluator discounts — the evidence column is the scoring one.
         for requirement in requirements:
-            lines.append(f"Requirement — {requirement}: the Bidder complies.")
+            evidence = _evidence_for(requirement, tagged_facts)
+            if evidence is None:
+                lines.append(
+                    f"Requirement — {requirement}. The Bidder complies. "
+                    f"Evidence: {unknown('supporting record', 'no matching record in capability DB')}"
+                )
+            else:
+                lines.append(
+                    f"Requirement — {requirement}. The Bidder complies. "
+                    f"Evidence: {evidence.text}. {evidence.tag}"
+                )
         for fact in _facts_of(tagged_facts, PRODUCT_TAGS):
             lines.append(f"Offered: {fact.text}. {fact.tag}")
     elif section_tag == "quality_assurance":
