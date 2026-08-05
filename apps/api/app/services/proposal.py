@@ -68,7 +68,9 @@ _SCAFFOLD_RE = re.compile(
 # with "[F:f86aed8e]" in the middle of a sentence looks broken, and a bid can be
 # rejected on presentation alone. So they are stripped at the moment of
 # rendering, not at the moment of writing.
-_SOURCE_TAG_RE = re.compile(r"\s*\[(?:F|P):[0-9a-f]{6,12}\]", re.IGNORECASE)
+_SOURCE_TAG_RE = re.compile(
+    r"\s*\[SRC: [^\]]+\]|\s*\[(?:F|P):[0-9a-f]{6,12}\]", re.IGNORECASE
+)
 
 
 def render_for_reader(text: str) -> str:

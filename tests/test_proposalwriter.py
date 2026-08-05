@@ -33,11 +33,14 @@ def test_fact_context_renders_tagged_lines():
     # One line per input fact and product, then any computed (derived) facts,
     # which are appended last and covered by their own tests below.
     assert len(tagged) == 2 + len(derived_facts(FACTS, PRODUCTS))
+    # Tags name the capability-DB record, not a hash of its id. The opaque
+    # form proved nothing to the bid manager reading the draft; the path points
+    # at a record they can go and check (docs/REFERENCE_PROPOSAL.md, rule 1).
     fact = tagged[0]
-    assert fact.tag == f"[F:{FACT_ID.hex[:8]}]"
+    assert fact.tag == "[SRC: company_facts/turnover/FY2024-25]"
     assert "₹150.00 crore" in fact.text and "2024-25" in fact.text
     product = tagged[1]
-    assert product.tag == f"[P:{PRODUCT_ID.hex[:8]}]"
+    assert product.tag.startswith("[SRC: product_catalogue/")
     assert "IS 4923" in product.text and "45 days" in product.text
 
 

@@ -5,7 +5,7 @@ never by a model (§9 rule 2)."""
 import re
 from dataclasses import dataclass
 
-TAG_RE = re.compile(r"\[(?:F|P):[0-9a-f]{8}\]")
+TAG_RE = re.compile(r"\[SRC: [^\]]+\]|\[(?:F|P):[0-9a-f]{8}\]")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _NUMBER_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?")
 

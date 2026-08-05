@@ -34,9 +34,20 @@ export function isOpenFlag(claim: ProposalClaim): boolean {
   );
 }
 
-/** Internal source tags belong in the provenance column, not mid-sentence. */
+/** Internal source tags belong in the provenance column, not mid-sentence.
+ *
+ *  Two forms are stripped: the readable path the writer emits now
+ *  ([SRC: company_facts/turnover/FY2024-25]) and the older hash form, so a
+ *  proposal drafted before the change still renders cleanly.
+ *
+ *  A declared gap ([TO BE CONFIRMED: ...]) is deliberately NOT stripped — it is
+ *  content, and the one thing in the draft a reader must act on. */
 export function stripTags(text: string): string {
-  return text.replace(/\[(?:F|P):[0-9a-f]{8}\]/g, "").replace(/\s{2,}/g, " ").trim();
+  return text
+    .replace(/\[SRC: [^\]]+\]/g, "")
+    .replace(/\[(?:F|P):[0-9a-f]{8}\]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /** The two honest answers to a flagged claim.

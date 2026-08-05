@@ -1,12 +1,18 @@
 """Section drafting with enforced source tags (SPEC §5.7, §9 rule 5).
 
 Facts come only from the capability DB: `build_fact_context` renders each
-fact/product as one line with a tag ([F:xxxxxxxx] / [P:xxxxxxxx]). Factual
-sentences must end with a valid tag; `enforce_source_tags` DROPS any factual
-sentence whose tag is missing or unknown — the ground-check for prose.
+fact/product as one line with a source tag naming the record it came from
+([SRC: company_facts/turnover/FY2024-25]). Factual sentences must end with a
+valid tag; `enforce_source_tags` DROPS any factual sentence whose tag is
+missing or unknown — the ground-check for prose.
+
+Where the database has no value at all, the line carries
+[TO BE CONFIRMED: <field> — not in capability DB] instead. That is not a
+citation and is never dropped: it is the absence of one, made visible, so a
+reader can act on the gap rather than mistake silence for agreement
+(docs/REFERENCE_PROPOSAL.md).
 """
 
-import hashlib
 import re
 from dataclasses import dataclass
 
@@ -20,8 +26,47 @@ DEFAULT_SECTIONS = [
     "declarations",
 ]
 
-TAG_RE = re.compile(r"\[(?:F|P):[0-9a-f]{8}\]")
+# A source tag names the capability-DB record a sentence came from.
+#
+# It used to be an opaque hash — [F:a1b2c3d4]. That validated fine and proved
+# nothing to a human: a bid manager checking a turnover figure could not tell
+# which record it came from without a database query, and the tag was noise in
+# the draft they were reading.
+#
+# It is now a readable path — [SRC: company_facts/turnover/FY2024-25] — as
+# docs/REFERENCE_PROPOSAL.md requires. Same guarantee, but the proof is legible
+# at the point of reading. The hash form is still matched so drafts written
+# before the change keep validating rather than having every sentence dropped.
+TAG_RE = re.compile(r"\[SRC: [^\]]+\]|\[(?:F|P):[0-9a-f]{8}\]")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _slug(text: str) -> str:
+    """A path segment: lower case, underscores, nothing that breaks the tag."""
+    return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_")
+
+
+def source_path(record: dict, table: str) -> str:
+    """Where in the capability database this record lives.
+
+    The path is built from the record's own identifying fields, so it stays
+    stable across runs and points at something a person can actually go and
+    look at — which is the whole reason for preferring it to a hash.
+    """
+    if table == "company_facts":
+        kind = _slug(record.get("fact_type") or "fact")
+        if record.get("fiscal_year"):
+            return f"company_facts/{kind}/FY{record['fiscal_year']}"
+        if kind == "certification" and record.get("value_text"):
+            return f"company_facts/certification/{_slug(record['value_text'])}"
+        return f"company_facts/{kind}"
+    # product_catalogue: the product's name is what a reader recognises.
+    name = record.get("product_name") or record.get("product_code") or "product"
+    return f"product_catalogue/{_slug(name)}"
+
+
+def source_tag(record: dict, table: str) -> str:
+    return f"[SRC: {source_path(record, table)}]"
 
 # A declared gap in the capability database.
 #
@@ -60,9 +105,12 @@ def _crore(value: float) -> str:
 
 
 def _derived_tag(name: str) -> str:
-    """A stable synthetic tag for a fact BidProof computed itself. Same shape as
-    a real fact tag so it validates, cites and fact-checks identically."""
-    return f"[F:{hashlib.sha256(name.encode()).hexdigest()[:8]}]"
+    """A figure BidProof computed rather than read — an average, a total.
+
+    `derived/` says so plainly. A reader who wants to check an average annual
+    turnover needs to know it was calculated from the yearly rows, not stored
+    as a row of its own; a hash told them nothing."""
+    return f"[SRC: derived/{name}]"
 
 
 def derived_facts(facts: list[dict], products: list[dict]) -> list[TaggedFact]:
@@ -123,7 +171,7 @@ def build_fact_context(facts: list[dict], products: list[dict]) -> list[TaggedFa
     FactChecker later verifies against."""
     tagged: list[TaggedFact] = []
     for fact in facts:
-        tag = f"[F:{fact['id'].hex[:8]}]"
+        tag = source_tag(fact, "company_facts")
         kind = fact["fact_type"]
         if kind == "turnover" and fact.get("value_number") is not None:
             text = (
@@ -146,7 +194,7 @@ def build_fact_context(facts: list[dict], products: list[dict]) -> list[TaggedFa
         tagged.append(TaggedFact(tag=tag, text=text))
 
     for product in products:
-        tag = f"[P:{product['id'].hex[:8]}]"
+        tag = source_tag(product, "product_catalogue")
         bits = [f"{product['product_code']} {product['product_name']}"]
         if product.get("standards"):
             bits.append("standards " + ", ".join(product["standards"]))
