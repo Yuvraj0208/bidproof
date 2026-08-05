@@ -21,7 +21,7 @@ class ContradictingWriter(FakeGateway):
         if role != "strong":
             return await super().complete(role, messages, **params)
         self.calls.append({"role": role})
-        tag = re.search(r"\[F:[0-9a-f]{8}\]", messages[1]["content"])
+        tag = re.search(r"\[SRC: [^\]]+\]|\[F:[0-9a-f]{8}\]", messages[1]["content"])
         body = f"Our turnover is exactly 777 crore. {tag.group(0)}" if tag else ""
         return {"choices": [{"message": {"content": body}}]}
 

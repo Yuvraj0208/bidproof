@@ -177,7 +177,12 @@ async def test_the_deadline_reason_is_recomputed_when_the_card_is_read(owner_con
         await owner_conn.execute(
             text(
                 "UPDATE tenders SET closing_at = :c, "
-                "triage = jsonb_set(triage, '{reasons}', :r::jsonb) WHERE id = :i"
+                # CAST(), not ":r::jsonb". SQLAlchemy's text() parser reads
+                # "::" as an escaped colon, so the bind silently never happened
+                # and Postgres received a literal ":" — "syntax error at or
+                # near :". CAST is unambiguous.
+                "triage = jsonb_set(triage, '{reasons}', CAST(:r AS jsonb)) "
+                "WHERE id = :i"
             ),
             {
                 "c": closing,

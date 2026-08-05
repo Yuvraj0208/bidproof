@@ -44,7 +44,12 @@ async def test_full_draft_after_go_all_claims_verified(owner_conn):
         summary = (await client.post(f"/tenders/{tender_id}/proposal")).json()
         proposal = (await client.get(f"/tenders/{tender_id}/proposal")).json()
 
-    assert summary["sections"] == 7
+    # Assert against the writer's own list rather than a magic number. The
+    # count changed from 7 to 10 when the sections were reordered to match
+    # docs/REFERENCE_PROPOSAL.md, and a literal here would go stale again the
+    # next time the bid structure moves.
+    from bidproof_proposalwriter import DEFAULT_SECTIONS
+    assert summary["sections"] == len(DEFAULT_SECTIONS)
     assert summary["claims"] > 0
     assert summary["contradicted"] == 0
     assert summary["cannot_verify"] == 0
@@ -85,7 +90,12 @@ async def test_fabricating_writer_is_dropped_and_contradiction_flagged(owner_con
             # find a real fact tag to misuse for the contradiction
             import re
 
-            tag = re.search(r"\[F:[0-9a-f]{8}\]", user)
+            # Match whichever tag form the writer is using. This scraped
+            # "[F:...]" and silently stopped fabricating when tags became
+            # "[SRC: ...]" — the test then passed its drop assertion and
+            # reported zero contradictions, which looked like the FactChecker
+            # had gone quiet rather than like the test had.
+            tag = re.search(r"\[SRC: [^\]]+\]|\[F:[0-9a-f]{8}\]", user)
             body = (
                 "We supplied 999 warehouses for Fabricated Client Ltd in 2019.\n"
                 + (f"Our turnover is ₹777.00 crore. {tag.group(0)}\n" if tag else "")

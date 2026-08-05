@@ -88,12 +88,21 @@ async def main() -> None:
 
     org_id = os.environ.get("SEED_ORG_ID")
     if org_id is None:
-        # Default to the only org, so the common case needs no argument.
-        from app.core.db import get_engine
-        from sqlalchemy.ext.asyncio import AsyncSession
+        # Look the org up as OWNER. Row-level security scopes the app role to
+        # one organisation via a per-transaction setting, so a query for "which
+        # organisations exist" through that role correctly returns none — which
+        # read as "no organisations found" rather than as "wrong role".
+        from sqlalchemy.ext.asyncio import create_async_engine
 
-        async with AsyncSession(get_engine()) as session:
-            rows = (await session.execute(select(Organization.id))).scalars().all()
+        owner_url = os.environ.get(
+            "DATABASE_URL_OWNER",
+            "postgresql+asyncpg://bidproof_owner:bidproof_dev@localhost:5433/bidproof",
+        )
+        owner = create_async_engine(owner_url)
+        async with owner.connect() as conn:
+            rows = (await conn.execute(select(Organization.id))).scalars().all()
+        await owner.dispose()
+
         if len(rows) != 1:
             raise SystemExit(
                 f"{len(rows)} organisations found — set SEED_ORG_ID to choose one"
