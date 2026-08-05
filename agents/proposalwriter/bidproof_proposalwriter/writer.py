@@ -16,14 +16,28 @@ reader can act on the gap rather than mistake silence for agreement
 import re
 from dataclasses import dataclass
 
+# The order Cover-I is assembled in (docs/REFERENCE_PROPOSAL.md, rule 6).
+# Three of these are new and they are the ones an evaluator actually scores:
+#
+#   technical_compliance  answers EVERY clause, one row each. Rule 3 — this is
+#                         the heart of the bid and maps 1:1 onto the compliance
+#                         matrix the system already produces.
+#   programme_of_work     where the delivery commitment lives, and therefore
+#                         where a missing lead time has to be declared.
+#   deviations            stated openly in their own section. A bid that hides
+#                         a deviation is disqualified at evaluation; one that
+#                         declares it stays in the running (rule 4).
 DEFAULT_SECTIONS = [
     "cover_letter",
-    "company_profile",
+    "understanding_of_requirement",
+    "technical_compliance",
     "eligibility_compliance",
     "technical_approach",
-    "delivery_and_support",
+    "quality_assurance",
+    "programme_of_work",
+    "deviations",
+    "schedule_of_enclosures",
     "commercial_terms",
-    "declarations",
 ]
 
 # A source tag names the capability-DB record a sentence came from.
@@ -281,10 +295,25 @@ def enforce_source_tags(
     return "\n".join(kept_lines).strip(), dropped
 
 
-def _facts_of(tagged: list[TaggedFact], prefix: str, contains: str = "") -> list[TaggedFact]:
+# What a caller means by "company facts" and "products", independent of how a
+# tag happens to be spelled. When tags moved from [F:hash] to [SRC: path] the
+# call sites still asked for "[F:" and silently matched nothing — every
+# deterministic section kept its opening line and lost every fact under it.
+# Naming the two families here means a future change to the tag format has one
+# place to update, not fifteen.
+FACT_TAGS = ("[SRC: company_facts/", "[SRC: derived/", "[F:")
+PRODUCT_TAGS = ("[SRC: product_catalogue/", "[P:")
+
+
+def _facts_of(
+    tagged: list[TaggedFact],
+    prefix: str | tuple[str, ...],
+    contains: str = "",
+) -> list[TaggedFact]:
+    prefixes = (prefix,) if isinstance(prefix, str) else prefix
     return [
         t for t in tagged
-        if t.tag.startswith(prefix) and contains.lower() in t.text.lower()
+        if t.tag.startswith(prefixes) and contains.lower() in t.text.lower()
     ]
 
 
@@ -309,31 +338,31 @@ def deterministic_section(
         )
     elif section_tag == "company_profile":
         lines.append(f"{company_name} is an established manufacturer and supplier.")
-        for fact in _facts_of(tagged_facts, "[F:", "turnover"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "turnover"):
             lines.append(f"{fact.text}. {fact.tag}")
-        for fact in _facts_of(tagged_facts, "[F:", "net worth"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "net worth"):
             lines.append(f"{fact.text}. {fact.tag}")
-        for fact in _facts_of(tagged_facts, "[F:", "executed"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "executed"):
             lines.append(f"{fact.text}. {fact.tag}")
     elif section_tag == "eligibility_compliance":
         lines.append(
             "We meet the eligibility requirements of this tender, as evidenced below."
         )
-        for fact in _facts_of(tagged_facts, "[F:", "turnover"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "turnover"):
             lines.append(f"{fact.text}. {fact.tag}")
-        for fact in _facts_of(tagged_facts, "[F:", "holds"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "holds"):
             lines.append(f"{fact.text}. {fact.tag}")
     elif section_tag == "technical_approach":
         lines.append(
             "Our offered products conform to the tendered specifications."
         )
-        for fact in _facts_of(tagged_facts, "[P:"):
+        for fact in _facts_of(tagged_facts, PRODUCT_TAGS):
             lines.append(f"Offered: {fact.text}. {fact.tag}")
     elif section_tag == "delivery_and_support":
         lines.append(
             "Delivery, installation and after-sales support are provided pan-India."
         )
-        for fact in _facts_of(tagged_facts, "[P:", "lead time"):
+        for fact in _facts_of(tagged_facts, PRODUCT_TAGS, "lead time"):
             lines.append(f"{fact.text}. {fact.tag}")
     elif section_tag == "commercial_terms":
         lines.append(
@@ -341,13 +370,81 @@ def deterministic_section(
             "All commercial terms of the tender are accepted unless queried in "
             "the pre-bid stage."
         )
+    elif section_tag == "understanding_of_requirement":
+        lines.append(
+            f"The Bidder has examined the tender document for {tender_title}, "
+            "including the technical specifications, the conditions of contract "
+            "and any corrigenda issued, and has prepared this bid accordingly."
+        )
+        lines.append(
+            "The Bidder notes that the scope is not limited to supply. It "
+            "comprises design, manufacture, delivery, installation, testing, "
+            "inspection and handing over of the completed system with the "
+            "documentation the tender requires."
+        )
+    elif section_tag == "technical_compliance":
+        # Rule 3: every clause answered, one line each, nothing skipped. The
+        # requirements list IS the compliance matrix, so a clause that reached
+        # the writer reaches the bid.
+        lines.append(
+            "The Bidder responds below to each requirement of the tender. "
+            "Deviations, where any, are consolidated in the Statement of "
+            "Deviations."
+        )
+        for requirement in requirements:
+            lines.append(f"Requirement — {requirement}: the Bidder complies.")
+        for fact in _facts_of(tagged_facts, PRODUCT_TAGS):
+            lines.append(f"Offered: {fact.text}. {fact.tag}")
+    elif section_tag == "quality_assurance":
+        lines.append(
+            "The Bidder operates a certified quality management system, and "
+            "site work is carried out under its health and safety framework."
+        )
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "holds"):
+            lines.append(f"{fact.text}. {fact.tag}")
+    elif section_tag == "programme_of_work":
+        # Where the delivery commitment lives — and so where a missing lead
+        # time must be declared rather than glossed. See rule 2.
+        lines.append(
+            "The Bidder shall submit drawings and design calculations for "
+            "approval before despatch, and shall complete installation, "
+            "testing and handing over in the sequence agreed with the "
+            "Engineer-in-Charge."
+        )
+        for fact in _facts_of(tagged_facts, PRODUCT_TAGS, "lead time"):
+            lines.append(f"{fact.text}. {fact.tag}")
+    elif section_tag == "deviations":
+        # Rule 4. An empty deviations section is a statement in itself, and a
+        # required one — silence here reads as concealment at evaluation.
+        lines.append(
+            "The Bidder declares the deviations below and confirms that no "
+            "other deviation from the tender document is intended."
+        )
+        gaps = [f for f in tagged_facts if UNKNOWN_RE.search(f.text)]
+        for fact in gaps:
+            lines.append(
+                f"The Bidder cannot confirm this at the time of submission: "
+                f"{fact.text}."
+            )
+        if not gaps:
+            lines.append(
+                "No deviation from the tender document is proposed."
+            )
+    elif section_tag == "schedule_of_enclosures":
+        lines.append(
+            "The documents listed below are enclosed with this bid. Items "
+            "marked for confirmation are being compiled and will be furnished "
+            "before the due date."
+        )
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "holds"):
+            lines.append(f"Enclosed — certificate evidencing: {fact.text}. {fact.tag}")
     elif section_tag == "declarations":
         lines.append(
             "We declare that the information furnished in this bid is true and "
             "correct, that we are not blacklisted by any government agency, and "
             "that the authorised signatory signs this bid."
         )
-        for fact in _facts_of(tagged_facts, "[F:", "blacklist"):
+        for fact in _facts_of(tagged_facts, FACT_TAGS, "blacklist"):
             lines.append(f"On record — {fact.text}. {fact.tag}")
     else:
         lines.append(f"Section: {section_tag.replace('_', ' ')}.")

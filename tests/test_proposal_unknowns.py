@@ -103,3 +103,34 @@ def test_the_placeholder_names_the_field_and_says_why():
 
     custom = unknown("blacklisting status", "recorded without a verifiable source")
     assert "recorded without a verifiable source" in custom
+
+
+def test_every_section_still_carries_facts_after_a_tag_format_change():
+    """The regression that shipped in c465448.
+
+    `_facts_of` filtered by tag PREFIX. When tags moved from [F:hash] to
+    [SRC: path] every call site still asked for "[F:" and matched nothing, so
+    each deterministic section kept its opening sentence and lost every fact
+    beneath it. The suite stayed green: no test asserted that a section
+    contains more than boilerplate.
+
+    A section with a lead line and no evidence is exactly the three-paragraph
+    output docs/REFERENCE_PROPOSAL.md calls a failure.
+    """
+    from bidproof_proposalwriter.writer import build_fact_context, deterministic_section
+
+    facts = [{
+        "id": type("U", (), {"hex": "aaaaaaaa1111"})(),
+        "fact_type": "turnover", "value_number": 1.5e9,
+        "fiscal_year": "2024-25", "value_text": None,
+        "legal_entity": None, "valid_until": None,
+    }]
+    tagged = build_fact_context(facts, [product(lead_time_days=45)])
+
+    for section in ("company_profile", "eligibility_compliance", "technical_approach"):
+        body = deterministic_section(section, "A Tender", "Godrej", tagged, [])
+        lines = [ln for ln in body.splitlines() if ln.strip()]
+        assert len(lines) > 1, (
+            f"{section} produced only its opening line — the facts beneath it "
+            "were filtered out by a tag prefix that no longer matches"
+        )
