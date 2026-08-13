@@ -16,7 +16,7 @@
       "label": "BidProof: 1 — API (port 8000)",
       "detail": "FastAPI with --reload, so code edits are picked up without a restart.",
       "type": "shell",
-      "command": "python -m uv run --project apps/api uvicorn app.main:app --reload --port 8000",
+      "command": "python -m uv run --project apps/api python -m uvicorn app.main:app --reload --port 8000",
       "isBackground": true,
       "problemMatcher": {
         "owner": "bidproof",
