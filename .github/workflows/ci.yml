@@ -27,6 +27,8 @@ jobs:
       MINIO_ENDPOINT: localhost:9000
       MINIO_ACCESS_KEY: bidproof
       MINIO_SECRET_KEY: bidproof_dev_minio
+      # The CI database is disposable; the fixtures may wipe it.
+      BIDPROOF_TEST_DB_TRUNCATE_OK: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

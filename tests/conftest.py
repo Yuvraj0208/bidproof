@@ -65,6 +65,32 @@ def db_bootstrap():
     _bootstrap_database()
 
 
+TRUNCATE_OK_VAR = "BIDPROOF_TEST_DB_TRUNCATE_OK"
+
+
+async def _refuse_to_wipe_real_data(conn) -> None:
+    """The integration fixtures TRUNCATE organizations CASCADE — everything.
+
+    Pointed at the dev database by accident, that erased a month of demo
+    data in one run. So: a database that already holds organizations is
+    only wiped when the caller says so explicitly. CI sets the variable; a
+    developer sets it for one run against a database they mean to empty.
+    """
+    from sqlalchemy import text
+
+    if os.environ.get(TRUNCATE_OK_VAR) == "1":
+        return
+    count = (await conn.execute(text("SELECT count(*) FROM organizations"))).scalar()
+    if count:
+        pytest.exit(
+            f"integration fixtures would TRUNCATE a database holding {count} "
+            f"organization(s) at {OWNER_URL.rsplit('@', 1)[-1]}. Point "
+            f"DATABASE_URL_OWNER at a throwaway database, or set "
+            f"{TRUNCATE_OK_VAR}=1 to allow it.",
+            returncode=3,
+        )
+
+
 @pytest.fixture
 async def owner_conn(db_bootstrap):
     """Superuser/owner connection — bypasses RLS; used only to seed/inspect."""
@@ -73,6 +99,7 @@ async def owner_conn(db_bootstrap):
 
     engine = create_async_engine(OWNER_URL)
     async with engine.connect() as conn:
+        await _refuse_to_wipe_real_data(conn)
         await conn.execute(text("TRUNCATE tenders, organizations CASCADE"))
         await conn.commit()
         yield conn

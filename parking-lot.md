@@ -16,6 +16,7 @@ promoted into `docs/SPEC.md` §3.2 as a real user story with acceptance criteria
 | 2026-07-31 | Durable graph checkpointing across a process restart | Needs a `BaseCheckpointSaver` over the existing asyncpg session: LangGraph's stock Postgres saver wants psycopg and opens its own pool, which would put tenant run-state outside row-level security | Conductor | Parked — pause/resume works today by re-deriving state from Postgres |
 | 2026-07-31 | Decision Analyst: an agent that explains the EV without producing it | Reasons about sensitivity and which assumption is load-bearing. Needs a guard rejecting any numeral not already in the input, so "the AI cannot invent a rupee figure" is tested rather than promised | US-06 | Parked — EV stays deterministic either way |
 | 2026-07-31 | Port `replay.py` and `amendments.py` onto the graph | While `/process` runs through the Conductor and these call services directly, there are two orchestrations to keep in step — the same drift the Conductor exists to end | Conductor | Parked — after checkpoints 5 and 6 land |
+| 2026-09-13 | A shared access key in front of the hosted app until US-16 | Hosted on a public URL there is no login; a private Space and an OpenRouter spend limit are the guard today. A one-secret gate (cookie set once, checked by middleware) would let reviewers in without Hugging Face accounts | US-16 | Parked — private Space for now |
 |      |      |                                              |            |          |
 
 ## Promotion rule

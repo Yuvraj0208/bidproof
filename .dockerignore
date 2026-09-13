@@ -1,0 +1,18 @@
+# Keep the build context to source only. Anything here never reaches the image.
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/dist
+**/.git
+.backup
+.claude
+.vscode
+*.pdf
+*.docx
+*.pptx
+AG-AI-Tourism
+docs/images
+tests/fixtures
+.env
+.env.*

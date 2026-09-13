@@ -1,3 +1,13 @@
+---
+title: BidProof
+emoji: 📑
+colorFrom: indigo
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # BidProof
 
 **Find government tenders, read them, decide whether to bid — in rupees — and draft the proposal. With proof for every claim.**

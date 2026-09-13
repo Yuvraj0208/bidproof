@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     minio_secret_key: str = "bidproof_dev_minio"
     minio_secure: bool = False
     minio_bucket_raw: str = "tenders-raw"
+    # Any S3-compatible store works through the same client. Some hosted ones
+    # (Backblaze B2, Cloudflare R2) sign requests with a region; MinIO ignores it.
+    minio_region: str = ""
+
+    # Directory of the built web UI. When set, the API serves it from "/" so a
+    # single container is the whole product (one URL, no CORS). Empty in dev,
+    # where Vite serves the UI itself.
+    web_dist: str = ""
 
     # Upload guardrails (SPEC §10 input checks).
     max_upload_mb: int = 200

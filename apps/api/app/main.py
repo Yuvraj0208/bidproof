@@ -2,10 +2,11 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.core.config import get_settings
 from app.routers import (
@@ -135,7 +136,36 @@ def create_app() -> FastAPI:
     app.include_router(evaluation.router)
     app.include_router(modellab.router)
     app.include_router(onboarding.router)
+    _serve_web(app)
     return app
+
+
+def _serve_web(app: FastAPI) -> None:
+    """Serve the built web UI from "/" when WEB_DIST points at a Vite build.
+
+    Registered last, so every API route above wins. Anything that is not a
+    real file under the build falls back to index.html — the UI uses
+    client-side routes, and a deep link such as /workspace/<id> must load the
+    app rather than 404. The path is resolved and checked against the build
+    directory so a crafted URL cannot read outside it.
+    """
+    dist = get_settings().web_dist
+    if not dist:
+        return
+    root = Path(dist).resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        logger.warning("WEB_DIST=%s has no index.html; not serving the UI", dist)
+        return
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def web(path: str) -> FileResponse:
+        candidate = (root / path).resolve() if path else index
+        if candidate.is_relative_to(root) and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(index)
+
+    logger.info("serving web UI from %s", root)
 
 
 app = create_app()

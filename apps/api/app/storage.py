@@ -1,5 +1,5 @@
-"""Object storage (MinIO). Raw tender files only — parsed truth lives in
-Postgres with its grounding, never in loose files."""
+"""Object storage (MinIO, or any S3-compatible store). Raw tender files only —
+parsed truth lives in Postgres with its grounding, never in loose files."""
 
 import io
 
@@ -16,6 +16,7 @@ class ObjectStorage:
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=settings.minio_secure,
+            region=settings.minio_region or None,
         )
         self._bucket = settings.minio_bucket_raw
 
