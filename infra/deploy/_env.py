@@ -15,7 +15,8 @@ REPO = Path(__file__).resolve().parents[2]
 DEPLOY_ENV = REPO / ".env.deploy"
 LOCAL_ENV = REPO / ".env"
 
-REQUIRED = ("HF_TOKEN", "HF_SPACE", "NEON_URL", "B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY")
+# The managed services every host needs; each deploy tool checks its own extras.
+REQUIRED = ("NEON_URL", "B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY")
 GENERATED = ("APP_DB_PASSWORD", "LITELLM_MASTER_KEY")
 LLM_KEYS = tuple(
     f"LLM_{role}_{part}"
@@ -139,7 +140,8 @@ def container_secrets(values: dict[str, str]) -> dict[str, str]:
         "MINIO_SECURE": "true",
         "MINIO_REGION": b2_region(values["B2_ENDPOINT"]),
         "MINIO_BUCKET_RAW": values.get("B2_BUCKET") or "bidproof-tenders-raw",
-        "CORS_ORIGINS": space_host(values["HF_SPACE"]),
+        # The public origin; deploy_vm.py overrides this with the VM's name.
+        "CORS_ORIGINS": space_host(values["HF_SPACE"]) if values.get("HF_SPACE") else "",
         "SCOUT_ENABLED": "false",
         "CONDUCTOR_ENABLED": "true",
     }

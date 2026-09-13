@@ -1,0 +1,16 @@
+# SITE_HOST, SITE_USER and SITE_PASSWORD_HASH come from caddy.env. The
+# password gate is the whole access control until US-16 brings real auth:
+# one shared login, asked once per browser, covering the UI and the API.
+{$SITE_HOST} {
+	encode gzip
+	basic_auth {
+		{$SITE_USER} {$SITE_PASSWORD_HASH}
+	}
+	# Tender uploads are large PDFs; the API enforces its own MAX_UPLOAD_MB.
+	request_body {
+		max_size 250MB
+	}
+	# No upstream timeout by default: extraction over a 300-page tender can
+	# run for minutes, and Caddy must not cut it off.
+	reverse_proxy app:7860
+}

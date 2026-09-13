@@ -1,0 +1,46 @@
+# The product on one VM: the container from the root Dockerfile behind Caddy,
+# which terminates HTTPS (a Let's Encrypt certificate on the sslip.io name)
+# and asks for one shared user/password before anything is served. Postgres
+# (Neon) and the object store (B2) are the managed services set up earlier.
+#
+# deploy_vm.py copies the tree to /opt/bidproof/src and writes app.env and
+# caddy.env next to this file before running:
+#   docker compose -f compose.vm.yml up -d --build
+
+name: bidproof
+
+services:
+  app:
+    build:
+      context: ../..
+      args:
+        WITH_ML: "1"
+    image: bidproof:vm
+    restart: unless-stopped
+    env_file: app.env
+    expose:
+      - "7860"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:7860/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 5
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: caddy.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy-data:
+  caddy-config:

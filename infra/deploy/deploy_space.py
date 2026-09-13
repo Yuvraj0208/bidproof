@@ -48,6 +48,9 @@ def main() -> int:
     from huggingface_hub.utils import RepositoryNotFoundError
 
     values = load_deploy_env()
+    for key in ("HF_TOKEN", "HF_SPACE"):
+        if not values.get(key):
+            raise SystemExit(f".env.deploy is missing {key}")
     space = values["HF_SPACE"]
     api = HfApi(token=values["HF_TOKEN"])
     who = api.whoami()["name"]

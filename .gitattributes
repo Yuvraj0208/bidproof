@@ -6,3 +6,4 @@
 # Files that run inside the Linux container must stay LF on every checkout.
 *.sh text eol=lf
 Dockerfile text eol=lf
+infra/deploy/Caddyfile text eol=lf
