@@ -19,10 +19,13 @@ RUN npm run build
 # ---- api ----------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS api
 
+# No uv cache: inside an image the cache is a second copy of every wheel
+# (2.2 GB here), kept in a layer nothing ever reads again.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1
+    UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1
 
 # OpenCV (behind the OCR engine) needs these two shared libraries even when
 # no window is ever opened. Spaces run the container as uid 1000 with a

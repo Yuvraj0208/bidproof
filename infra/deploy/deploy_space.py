@@ -24,13 +24,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _env import REPO, container_secrets, load_deploy_env, space_host  # noqa: E402
 
-TERMINAL = {"RUNNING", "RUNTIME_ERROR", "BUILD_ERROR", "CONFIG_ERROR", "PAUSED", "STOPPED"}
+FAILED = {"RUNTIME_ERROR", "BUILD_ERROR", "CONFIG_ERROR", "NO_APP_FILE", "PAUSED", "STOPPED"}
+BUILDING = {"BUILDING", "RUNNING_BUILDING", "APP_STARTING"}
 
 
 def tracked_tree(target: Path) -> int:
     """Unpack `git archive HEAD` into target; returns the file count."""
+    # autocrlf off: the archive carries the blobs as committed (LF), not the
+    # Windows checkout's CRLF — the container reads these files on Linux.
     archive = subprocess.run(
-        ["git", "-C", str(REPO), "archive", "--format=tar", "HEAD"],
+        ["git", "-C", str(REPO), "-c", "core.autocrlf=false",
+         "archive", "--format=tar", "HEAD"],
         check=True, capture_output=True,
     ).stdout
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
@@ -80,12 +84,21 @@ def main() -> int:
     print("[4/4] build")
     started = time.time()
     stage = None
+    seen_building = False
     while True:
         runtime = api.get_space_runtime(space)
         if runtime.stage != stage:
             stage = runtime.stage
-            print(f"      {stage:14} {int(time.time() - started):>4}s")
-        if stage in TERMINAL:
+            print(f"      {stage:16} {int(time.time() - started):>4}s")
+        elapsed = time.time() - started
+        if stage in BUILDING:
+            seen_building = True
+        # On a redeploy the old container keeps RUNNING while the new one
+        # builds, so RUNNING only counts once a build has been observed (or
+        # the platform never showed one within a couple of minutes).
+        if stage == "RUNNING" and (seen_building or elapsed > 120):
+            break
+        if stage in FAILED:
             break
         time.sleep(20)
     if stage != "RUNNING":
