@@ -16,7 +16,8 @@ Model calls still go through OpenRouter with the existing keys. Everything
 below is done once; after that one command redeploys.
 
 Hugging Face Spaces was the first choice (16 GB free) but Docker Spaces now
-need a PRO subscription; `deploy_space.py` is kept for anyone who has one.
+need a PRO subscription; `deploy_space.py` is kept for anyone who has one
+(a Space also needs a `sdk: docker` / `app_port: 7860` header on `README.md`).
 The same `Dockerfile` also runs on Render or Koyeb free tiers (512 MB) with
 `--build-arg WITH_ML=0`: no OCR — scanned pages are flagged for a human — and
 a slow CPU.
