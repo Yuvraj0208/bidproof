@@ -29,19 +29,20 @@ echo "[start] gateway on 127.0.0.1:4000"
 env -u DATABASE_URL -u DATABASE_URL_OWNER -u APP_DB_PASSWORD \
   /opt/litellm/bin/litellm --config "$GATEWAY_CONFIG" --host 127.0.0.1 --port 4000 &
 
-# The gateway takes half a minute to come up; the API probes the roles at
-# startup and would otherwise report "deterministic" until its cache expires.
+# The gateway takes half a minute to come up, longer on a small CPU; the API
+# probes the roles at startup and would otherwise report "deterministic"
+# until its cache expires.
 # Bounded: a gateway that never answers must not keep the API down with it.
 waited=0
 until python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=2)" 2>/dev/null; do
   waited=$((waited + 2))
-  if [ "$waited" -ge 90 ]; then
+  if [ "$waited" -ge 180 ]; then
     echo "[start] gateway not up after ${waited}s; starting the API anyway"
     break
   fi
   sleep 2
 done
-[ "$waited" -lt 90 ] && echo "[start] gateway ready after ${waited}s"
+[ "$waited" -lt 180 ] && echo "[start] gateway ready after ${waited}s"
 
 echo "[start] api on 0.0.0.0:${PORT:-7860}"
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-7860}" --proxy-headers --forwarded-allow-ips "*"

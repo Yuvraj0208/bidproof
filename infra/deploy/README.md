@@ -69,6 +69,20 @@ The VM keeps the full build log at `/opt/bidproof/build.log`; the running
 services answer to
 `docker compose -f /opt/bidproof/src/infra/deploy/compose.vm.yml logs`.
 
+```bash
+apps/api/.venv/Scripts/python.exe infra/deploy/deploy_render.py
+```
+
+The no-card fallback while free ARM capacity is unavailable. Needs
+`RENDER_API_KEY` in `.env.deploy`, Render's GitHub app allowed on the repo,
+and `main` pushed. Creates a free Docker web service in Singapore built with
+`WITH_ML=0` (the 512 MB instance has no room for Docling: text-layer PDFs
+parse normally, scanned pages are flagged for a human), sets the environment,
+waits for the deploy and checks `/health`. Free services sleep after 15 idle
+minutes and take about a minute to wake. There is no site login on this path
+— the URL is unlisted, not protected — so keep a spend limit on the OpenRouter
+key.
+
 ## Langfuse Cloud (optional)
 
 cloud.langfuse.com → new project → API keys. Put `LANGFUSE_PUBLIC_KEY` and
