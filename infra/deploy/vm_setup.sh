@@ -18,6 +18,10 @@ else
   sudo sh -c 'mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4'
 fi
 
+# Ubuntu "Minimal" images ship without curl, which the Docker installer needs.
+if ! command -v curl >/dev/null 2>&1; then
+  sudo apt-get update -qq && sudo apt-get install -y -qq curl ca-certificates >/dev/null
+fi
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sudo sh >/dev/null
 fi
