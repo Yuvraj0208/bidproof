@@ -6,7 +6,7 @@ BidProof watches government tender portals, reads the documents (300–800 page 
 
 Its one defining promise: **every fact, verdict and sentence clicks back to the exact page and box it came from.** The system is allowed to say *"I don't know."* It is never allowed to guess.
 
-> **Live:** https://bidproof-wtjw.onrender.com — sign in as *Godrej Enterprises Group*, open any tender, click a `p.3` next to a rule.
+> **Live:** https://bidproof-wtjw.onrender.com — sign in with the demo company, open any tender, click a `p.3` next to a rule.
 > It runs on free tiers, so the first visit after a quiet spell takes about a minute to wake. [How it is hosted →](#hosting)
 
 ![The BidProof pipeline: discover, read, check, decide, draft — with click-to-proof underneath and human checkpoints at the end](docs/images/pipeline.svg)
@@ -48,7 +48,7 @@ BidProof turns those two days into minutes, and turns "we missed it" into a live
 
 ## Try it in two minutes
 
-1. Open **https://bidproof-wtjw.onrender.com** and press **Sign in to your workspace** → *Godrej Enterprises Group*.
+1. Open **https://bidproof-wtjw.onrender.com**, press **Sign in to your workspace**, and choose the demo company (the only one listed).
 2. **Tender Radar** — two lists: tenders in your lane, and ones you could win but never bid on. Every card explains its own score.
 3. Press **Open** on a tender → the **Rules** tab. Click the **`p.3`** beside any rule: the PDF opens on that page with the exact box highlighted. That is the proof chain, end to end.
 4. **Matrix** → each rule against the company's real data, with a verdict and a confidence light. **Decision** → Go / No-Go as a rupee figure, the formula shown term by term. **Proposal** → a draft where every factual sentence carries a tag naming the record it came from.
@@ -334,7 +334,7 @@ Both are idempotent. The first seeds the organisation, capability database, prod
 
 Both are needed: with no gaps, the QuestionWriter has nothing to draft and half the demo stays invisible.
 
-For the Godrej pilot, `infra/seed/seed_godrej_public.py` loads their real **public** data — group turnover, ISO 9001/14001/45001 + GreenPro, and the named racking systems with published load ratings and EN 15512 / FEM / RMI compliance. Every figure carries the page it came from. It deliberately leaves certificate expiry dates, lead times, capacity and past contract values empty, because those are not public — so the checker returns `needs_human` rather than a number nobody can defend.
+For a pilot, `infra/seed/` can also load a real manufacturer's **public** data — group turnover, ISO 9001/14001/45001 + GreenPro, and the named racking systems with published load ratings and EN 15512 / FEM / RMI compliance. Every figure carries the page it came from. It deliberately leaves certificate expiry dates, lead times, capacity and past contract values empty, because those are not public — so the checker returns `needs_human` rather than a number nobody can defend.
 
 ---
 
@@ -362,7 +362,7 @@ Two read-only tools, safe to run mid-demo:
 uv run --project apps/api python tools/inspect_pdf.py "tender.pdf" --pages 1-5 --text
 
 # what do we know about this company, and what is missing?
-uv run --project apps/api python tools/show_company.py --company godrej --gaps
+uv run --project apps/api python tools/show_company.py --company <slug> --gaps
 ```
 
 `inspect_pdf` runs the same ladder the API uses, and prints the step-0 routing decision, per-page result and sample text **with bounding boxes**. `show_company` prints every fact with its source line, then a GAPS section — because when a verdict says *needs human*, the cause is almost always a missing field rather than a fault.
@@ -442,7 +442,3 @@ Presented as the group mini-project for **Generative AI (Assignment 3)**, AI & D
 | Yuvraj Singh | 27PGAI0086 |
 | Nishkarsh Khandelwal | 27PGAI0081 |
 | Darrsheni Sapovadia | 27PGAI0063 |
-
----
-
-*Design partner and first customer: Godrej Enterprises Group.*
