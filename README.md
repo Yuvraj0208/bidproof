@@ -34,6 +34,7 @@ Its one defining promise: **every fact, verdict and sentence clicks back to the 
 17. [Layout](#layout)
 18. [Documentation](#documentation)
 19. [Honest status](#honest-status)
+20. [Team](#team)
 
 ---
 
@@ -429,6 +430,18 @@ Known weak spots, stated rather than hidden:
 - **The Model Lab is a simulator** until real per-role runs are wired; every row says so.
 - **Conductor checkpoints 5 and 6** (proposal sections, submission) still run through the service layer; checkpoint 4 pauses the graph.
 - **Proposal depth** depends heavily on how much real company data has been loaded, and the evidence matcher is keyword overlap, not embeddings.
+
+---
+
+## Team
+
+Presented as the group mini-project for **Generative AI (Assignment 3)**, AI & Data Science Program, Jio Institute.
+
+| Name | Student ID |
+|---|---|
+| Yuvraj Singh | 27PGAI0086 |
+| Nishkarsh Khandelwal | 27PGAI0081 |
+| Darrsheni Sapovadia | 27PGAI0063 |
 
 ---
 
